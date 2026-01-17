@@ -27,4 +27,5 @@ def execute_sql(query: str) -> str:
         return str(result)
 
     except Exception as e:
+
         return f"Error: {str(e)}"
