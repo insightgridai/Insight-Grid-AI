@@ -25,7 +25,7 @@ from langgraph.prebuilt import tools_condition
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
 import os
 
-os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+#os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
 llm = ChatOpenAI(model="gpt-4o-mini")
 
