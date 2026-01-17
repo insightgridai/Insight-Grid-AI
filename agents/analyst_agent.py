@@ -55,9 +55,6 @@ analyst_graph.add_edge("tools","analyst")
 
 analyst_app = analyst_graph.compile()
 
-from IPython.display import Image, display
-
-display(Image(analyst_app.get_graph().draw_mermaid_png()))
 
 result = analyst_app.invoke({
     "messages": [HumanMessage(content="Summarize revenue")]
