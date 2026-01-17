@@ -7,7 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1yYKb-C_ImXd72ItvYGTWtF52qCCI0mpa
 """
 
-pip install -q langchain_openai langgraph langchain
 
 from db.connection import get_db_connection
 
