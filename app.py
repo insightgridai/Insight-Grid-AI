@@ -22,8 +22,8 @@ st.markdown(
         padding: 12px 24px;
     ">
         <div>
-            <h3 style="margin: -50;">👩‍💻 Hi User!</h3>
-            <p style="margin: -50; color: #9ca3af; font-size: 14px;">
+            <h3 style="margin: -110;">👩‍💻 Hi User!</h3>
+            <p style="margin: -150; color: #9ca3af; font-size: 14px;">
                 Welcome to Insight Grid AI
             </p>
         </div>
@@ -92,6 +92,7 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
 
 
