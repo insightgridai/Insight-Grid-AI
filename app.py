@@ -9,23 +9,24 @@ st.set_page_config(page_title="GenAI Analyst Prototype", layout="centered")
 
 
 # ---------------- DB Connectivity Test ----------------
-st.subheader("🔌 Database Connectivity Test")
-st.caption("This verifies whether the app can connect to the database using parameterized config.")
+left_col, right_col = st.columns([1, 3])
 
-if st.button("Test Database Connection"):
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        cur.fetchone()
-        cur.close()
-        conn.close()
+with left_col:
+    st.subheader("🔌 Database Connectivity Test")
+    st.caption("Verifies database connectivity using parameterized configuration.")
 
-        st.success("Database connected successfully ✅")
-
-    except Exception as e:
-        st.error("Database connection failed ❌")
-        st.exception(e)
+    if st.button("Test Database Connection"):
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            cur.close()
+            conn.close()
+            st.success("Database connected successfully ✅")
+        except Exception as e:
+            st.error("Database connection failed ❌")
+            st.exception(e)
 
 
 # ---------------- Analyst Agent ----------------
@@ -56,5 +57,6 @@ if st.button("Run Analysis"):
             except Exception as e:
                 st.error("Agent failed ❌")
                 st.exception(e)
+
 
 
