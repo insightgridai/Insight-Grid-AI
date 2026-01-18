@@ -30,7 +30,7 @@ if st.button("Test Database Connection"):
 
 # ---------------- Analyst Agent ----------------
 st.divider()
-st.title("📊 Analyst Agent")
+st.title("📊 Auditor Agent")
 
 user_query = st.text_area(
     "Enter your analysis question",
@@ -56,3 +56,4 @@ if st.button("Run Analysis"):
             except Exception as e:
                 st.error("Agent failed ❌")
                 st.exception(e)
+
