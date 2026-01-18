@@ -22,7 +22,7 @@ st.markdown(
         padding-bottom: 10px;
     ">
         <h3> 🧑‍💻 Hi User!</h3>
-        <p style="color: #9ca3af; margin-top: -10px;">
+        <p style="color: #9ca3af; margin-top: 10px;">
             Welcome to Insight Grid AI
         </p>
     </div>
@@ -89,6 +89,7 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
 
 
