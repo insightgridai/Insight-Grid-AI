@@ -5,6 +5,17 @@ from agents.analyst_agent import get_analyst_app
 
 st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
+# Greeting section (TOP)
+col1, col2 = st.columns([0.15, 0.85])
+with col1:
+    st.markdown("👋")
+with col2:
+    st.markdown("### Hi User!")
+    st.caption("Welcome to Insight Grid AI")
+
+st.markdown("---")  # optional divider
+
+
 # Create layout with spacer
 db_col, spacer_col, agent_col = st.columns([1.2, 0.6, 2.8])
 
@@ -61,3 +72,4 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
