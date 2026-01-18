@@ -17,7 +17,7 @@ st.set_page_config(
 st.markdown(
     """
     <div style="
-        padding-left: 60px;
+        padding-left: 10px;
         padding-top: 20px;
         padding-bottom: 10px;
     ">
@@ -89,4 +89,5 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
