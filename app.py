@@ -26,7 +26,7 @@ st.markdown(
             Welcome to Insight Grid AI
         </p>
     </div>
-    <hr style="margin-top: 10px; margin-bottom: 10px;">
+    <hr style="margin-top: -100px; margin-bottom: -10px;">
     """,
     unsafe_allow_html=True
 )
@@ -89,6 +89,7 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
 
 
