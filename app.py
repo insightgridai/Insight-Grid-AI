@@ -5,13 +5,13 @@ from agents.analyst_agent import get_analyst_app
 
 st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
-# Create layout columns
-left_col, center_col, right_col = st.columns([1, 2.5, 1])
+# Create layout with spacer
+db_col, spacer_col, agent_col = st.columns([1.2, 0.6, 2.8])
 
 # =========================
-# LEFT COLUMN – DB TEST
+# LEFT – DB CONNECTIVITY
 # =========================
-with left_col:
+with db_col:
     st.subheader("🔌 Database Connectivity Test")
     st.caption("Verifies database connectivity using parameterized configuration.")
 
@@ -29,9 +29,15 @@ with left_col:
             st.exception(e)
 
 # =========================
-# CENTER COLUMN – AGENT
+# SPACER – EMPTY COLUMN
 # =========================
-with center_col:
+with spacer_col:
+    st.write("")
+
+# =========================
+# RIGHT – AUDITOR AGENT
+# =========================
+with agent_col:
     st.title("📊 Auditor Agent")
     st.caption("Ask analytical questions based on the connected database")
 
@@ -55,7 +61,3 @@ with center_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
-
-# Right column intentionally empty (for balance / future use)
-with right_col:
-    pass
