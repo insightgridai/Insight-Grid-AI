@@ -3,26 +3,42 @@ from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
 from agents.analyst_agent import get_analyst_app
 
-# MUST be first Streamlit command
-st.set_page_config(page_title="Insight Grid AI", layout="wide")
+# =====================================================
+# PAGE CONFIG (MUST BE FIRST STREAMLIT COMMAND)
+# =====================================================
+st.set_page_config(
+    page_title="Insight Grid AI",
+    layout="wide"
+)
 
-# ---------- TOP HEADER (LEFT-ALIGNED WEBSITE STYLE) ----------
-left_margin, header_col = st.columns([1.2, 6])
+# =====================================================
+# TOP HEADER (LEFT-ALIGNED, WEBSITE STYLE)
+# =====================================================
+st.markdown(
+    """
+    <div style="
+        padding-left: 60px;
+        padding-top: 20px;
+        padding-bottom: 10px;
+    ">
+        <h3>👋 Hi User!</h3>
+        <p style="color: #9ca3af; margin-top: -10px;">
+            Welcome to Insight Grid AI
+        </p>
+    </div>
+    <hr style="margin-top: 10px; margin-bottom: 30px;">
+    """,
+    unsafe_allow_html=True
+)
 
-with header_col:
-    st.markdown("### 👋 Hi User!")
-    st.caption("Welcome to Insight Grid AI")
+# =====================================================
+# MAIN LAYOUT (LEFT = DB | GAP | RIGHT = AUDITOR)
+# =====================================================
+db_col, spacer_col, agent_col = st.columns([1.2, 0.8, 3.0])
 
-st.markdown("---")
-
-
-
-# Create layout with spacer
-db_col, spacer_col, agent_col = st.columns([1.2, 0.6, 2.8])
-
-# =========================
-# LEFT – DB CONNECTIVITY
-# =========================
+# -----------------------------------------------------
+# LEFT COLUMN – DATABASE CONNECTIVITY
+# -----------------------------------------------------
 with db_col:
     st.subheader("🔌 Database Connectivity Test")
     st.caption("Verifies database connectivity using parameterized configuration.")
@@ -40,15 +56,15 @@ with db_col:
             st.error("Database connection failed ❌")
             st.exception(e)
 
-# =========================
-# SPACER – EMPTY COLUMN
-# =========================
+# -----------------------------------------------------
+# MIDDLE COLUMN – SPACER (INTENTIONALLY EMPTY)
+# -----------------------------------------------------
 with spacer_col:
     st.write("")
 
-# =========================
-# RIGHT – AUDITOR AGENT
-# =========================
+# -----------------------------------------------------
+# RIGHT COLUMN – AUDITOR AGENT
+# -----------------------------------------------------
 with agent_col:
     st.title("📊 Auditor Agent")
     st.caption("Ask analytical questions based on the connected database")
@@ -73,7 +89,3 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
-
-
-
-
