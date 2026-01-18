@@ -17,19 +17,27 @@ st.set_page_config(
 st.markdown(
     """
     <div style="
-        padding-left: 10px;
-        padding-top: 10px;
-        padding-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 24px;
     ">
-        <h3> 🧑‍💻 Hi User!</h3>
-        <p style="color: #9ca3af; margin-top: 10px;">
-            Welcome to Insight Grid AI
-        </p>
+        <div>
+            <h3 style="margin: 0;">👩‍💻 Hi User!</h3>
+            <p style="margin: 0; color: #9ca3af; font-size: 14px;">
+                Welcome to Insight Grid AI
+            </p>
+        </div>
+
+        <div style="color: #9ca3af; font-size: 14px;">
+            <!-- Empty spacer to balance layout -->
+        </div>
     </div>
-    <hr style="margin-top: -10px; margin-bottom: -10px;">
+    <hr style="margin-top: 8px; margin-bottom: 24px;">
     """,
     unsafe_allow_html=True
 )
+
 
 # =====================================================
 # MAIN LAYOUT (LEFT = DB | GAP | RIGHT = AUDITOR)
@@ -89,6 +97,7 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
 
 
