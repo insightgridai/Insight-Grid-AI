@@ -9,8 +9,8 @@ st.set_page_config(page_title="GenAI Analyst Prototype", layout="centered")
 
 
 # ---------------- DB Connectivity Test ----------------
-st.title("🔌 Database Connectivity Test")
-st.write("This verifies whether the app can connect to the database using parameterized config.")
+st.subheader("🔌 Database Connectivity Test")
+st.caption("This verifies whether the app can connect to the database using parameterized config.")
 
 if st.button("Test Database Connection"):
     try:
@@ -56,4 +56,5 @@ if st.button("Run Analysis"):
             except Exception as e:
                 st.error("Agent failed ❌")
                 st.exception(e)
+
 
