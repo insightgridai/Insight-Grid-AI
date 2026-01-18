@@ -3,19 +3,17 @@ from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
 from agents.analyst_agent import get_analyst_app
 
+# MUST be first Streamlit command
+st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
-# ---------- TOP HEADER ----------
-left_margin, header_col = st.columns([0.5, 5])
+# ---------- TOP HEADER (LEFT-ALIGNED WEBSITE STYLE) ----------
+left_margin, header_col = st.columns([1.2, 6])
 
 with header_col:
     st.markdown("### 👋 Hi User!")
     st.caption("Welcome to Insight Grid AI")
 
 st.markdown("---")
-# ---------- TOP HEADER ----------
-
-st.set_page_config(page_title="Insight Grid AI", layout="wide")
-
 
 
 
@@ -75,6 +73,7 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
 
 
