@@ -3,7 +3,6 @@ from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
 from agents.analyst_agent import get_analyst_app
 
-st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 # ---------- TOP HEADER ----------
 left_margin, header_col = st.columns([0.5, 5])
@@ -13,6 +12,11 @@ with header_col:
     st.caption("Welcome to Insight Grid AI")
 
 st.markdown("---")
+# ---------- TOP HEADER ----------
+
+st.set_page_config(page_title="Insight Grid AI", layout="wide")
+
+
 
 
 # Create layout with spacer
@@ -71,5 +75,6 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
 
