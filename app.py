@@ -18,7 +18,7 @@ st.markdown(
     """
     <div style="
         padding-left: 10px;
-        padding-top: 20px;
+        padding-top: 10px;
         padding-bottom: 10px;
     ">
         <h3> 🧑‍💻 Hi User!</h3>
@@ -89,5 +89,6 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
 
