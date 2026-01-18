@@ -28,7 +28,7 @@ st.markdown(
             </p>
         </div>
     </div>
-    <hr style="margin-top: 8px; margin-bottom: 24px;">
+    <hr style="margin-top: 8px; margin-bottom: -24px;">
     """,
     unsafe_allow_html=True
 )
@@ -92,6 +92,7 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
 
 
