@@ -1,7 +1,9 @@
 import streamlit as st
+import base64
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
 from agents.analyst_agent import get_analyst_app
+
 
 # =====================================================
 # PAGE CONFIG (MUST BE FIRST STREAMLIT COMMAND)
@@ -12,27 +14,49 @@ st.set_page_config(
 )
 
 # =====================================================
-# TOP HEADER (LEFT-ALIGNED, WEBSITE STYLE)
+# BACKGROUND IMAGE (LOCAL FILE – SAFE METHOD)
 # =====================================================
+def get_base64_image(image_path):
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
+
+bg_image = get_base64_image("assets/background.png")
+
 st.markdown(
-    """
-    <div style="
-        display: flex;
-        align-items: center;
-        padding: 12px 24px;
-    ">
-        <div>
-            <h3 style="margin: -110;">👩‍💻 Hi User!</h3>
-            <p style="margin: -150; color: #9ca3af; font-size: 14px;">
-                Welcome to Insight Grid AI
-            </p>
-        </div>
-    </div>
-    <hr style="margin-top: -8px; margin-bottom: 14px;">
+    f"""
+    <style>
+        .stApp {{
+            background:
+                linear-gradient(
+                    rgba(0,0,0,0.75),
+                    rgba(0,0,0,0.75)
+                ),
+                url("data:image/png;base64,{bg_image}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }}
+    </style>
     """,
     unsafe_allow_html=True
 )
 
+# =====================================================
+# TOP HEADER (LEFT-ALIGNED, CLEAN)
+# =====================================================
+st.markdown(
+    """
+    <div style="padding: 16px 24px;">
+        <h3 style="margin: 0;">👩‍💻 Hi User!</h3>
+        <p style="margin: 4px 0 0 0; color: #9ca3af; font-size: 14px;">
+            Welcome to Insight Grid AI
+        </p>
+    </div>
+    <hr style="margin: 12px 0 24px 0;">
+    """,
+    unsafe_allow_html=True
+)
 
 # =====================================================
 # MAIN LAYOUT (LEFT = DB | GAP | RIGHT = AUDITOR)
@@ -54,13 +78,13 @@ with db_col:
             cur.fetchone()
             cur.close()
             conn.close()
-            st.success("Database connected successfully✅")
+            st.success("Database connected successfully ✅")
         except Exception as e:
-            st.error("Database connection failed❌")
+            st.error("Database connection failed ❌")
             st.exception(e)
 
 # -----------------------------------------------------
-# MIDDLE COLUMN – SPACER (INTENTIONALLY EMPTY)
+# MIDDLE COLUMN – SPACER
 # -----------------------------------------------------
 with spacer_col:
     st.write("")
@@ -92,18 +116,3 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
