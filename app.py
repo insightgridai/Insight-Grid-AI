@@ -9,11 +9,8 @@ st.set_page_config(page_title="GenAI Analyst Prototype", layout="centered")
 
 
 # ---------------- DB Connectivity Test ----------------
-left_col, right_col = st.columns([1, 3])
-
-with left_col:
-    st.subheader("🔌 Database Connectivity Test")
-    st.caption("Verifies database connectivity using parameterized configuration.")
+st.subheader("🔌 Database Connectivity Test")
+st.caption("Verifies database connectivity using parameterized configuration.")
 
     if st.button("Test Database Connection"):
         try:
