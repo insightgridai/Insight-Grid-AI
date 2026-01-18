@@ -28,8 +28,8 @@ st.markdown(
         .stApp {{
             background:
                 linear-gradient(
-                    rgba(0,0,0,0.95),
-                    rgba(0,0,0,0.95)
+                    rgba(0,0,0,0.55),
+                    rgba(0,0,0,0.55)
                 ),
                 url("data:image/png;base64,{bg_image}");
             background-size: cover;
@@ -116,4 +116,5 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
