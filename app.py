@@ -54,9 +54,9 @@ with db_col:
             cur.fetchone()
             cur.close()
             conn.close()
-            st.success("Database connected successfully ✅")
+            st.success("Database connected successfully✅")
         except Exception as e:
-            st.error("Database connection failed ❌")
+            st.error("Database connection failed❌")
             st.exception(e)
 
 # -----------------------------------------------------
@@ -92,6 +92,7 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
 
 
