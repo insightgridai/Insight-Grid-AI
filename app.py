@@ -72,7 +72,7 @@ with db_col:
 
     if st.button("Test Database Connection"):
         try:
-            conn = get_db_connection1()
+            conn = get_db_connection()
             cur = conn.cursor()
             cur.execute("SELECT 1")
             cur.fetchone()
@@ -116,6 +116,7 @@ with agent_col:
                 except Exception as e:
                     st.error("Agent failed ❌")
                     st.exception(e)
+
 
 
 
