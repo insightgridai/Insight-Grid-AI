@@ -36,13 +36,19 @@ st.markdown(
         background-attachment: fixed;
     }}
 
-    /* Keep buttons single-line */
-    div.stButton > button {{
-        white-space: nowrap;
-        padding: 0.6rem 1.1rem;
+    /* Remove Streamlit column padding */
+    section[data-testid="stHorizontalBlock"] {{
+        padding-left: 0 !important;
+        padding-right: 0 !important;
     }}
 
-    /* Inline success badge */
+    /* Keep buttons single line */
+    div.stButton > button {{
+        white-space: nowrap;
+        padding: 0.6rem 1.2rem;
+    }}
+
+    /* DB success badge */
     .db-success {{
         background: rgba(34, 197, 94, 0.2);
         color: #22c55e;
@@ -62,45 +68,51 @@ st.markdown(
 )
 
 # =====================================================
-# HEADER (LEFT + RIGHT)
+# HEADER (TRUE LEFT + TRUE RIGHT)
 # =====================================================
-header_left, header_right = st.columns([7, 3])
+header_container = st.container()
 
-with header_left:
-    st.markdown(
-        """
-        <h3 style="margin-bottom:4px;">Insight Grid AI</h3>
-        <p style="margin-top:0; color:#9ca3af; font-size:14px;">
-            Where Data, Agents, and Decisions Connect.
-        </p>
-        """,
-        unsafe_allow_html=True
-    )
+with header_container:
+    col_left, col_right = st.columns([6, 6])
 
-with header_right:
-    st.markdown("<div style='display:flex; flex-direction:column; align-items:flex-end;'>", unsafe_allow_html=True)
+    with col_left:
+        st.markdown(
+            """
+            <h3 style="margin-bottom:4px;">Insight Grid AI</h3>
+            <p style="margin-top:0; color:#9ca3af; font-size:14px;">
+                Where Data, Agents, and Decisions Connect.
+            </p>
+            """,
+            unsafe_allow_html=True
+        )
 
-    if st.button("🔌 Test DB Connection"):
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.fetchone()
-            cur.close()
-            conn.close()
+    with col_right:
+        st.markdown(
+            "<div style='display:flex; flex-direction:column; align-items:flex-end; margin-left:auto;'>",
+            unsafe_allow_html=True
+        )
 
-            st.markdown(
-                "<div class='db-success'>✅ Database connected successfully</div>",
-                unsafe_allow_html=True
-            )
+        if st.button("🔌 Test DB Connection"):
+            try:
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute("SELECT 1")
+                cur.fetchone()
+                cur.close()
+                conn.close()
 
-        except Exception as e:
-            st.error("Database connection failed ❌")
-            st.exception(e)
+                st.markdown(
+                    "<div class='db-success'>✅ Database connected successfully</div>",
+                    unsafe_allow_html=True
+                )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+            except Exception as e:
+                st.error("Database connection failed ❌")
+                st.exception(e)
 
-st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("<hr style='margin: 10px 0 24px 0;'>", unsafe_allow_html=True)
 
 # =====================================================
 # AUDITOR AGENT
