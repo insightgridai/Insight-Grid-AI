@@ -45,7 +45,7 @@ st.markdown(
     .db-float {{
         position: fixed;
         top: 16px;
-        right: 24px;
+        left: 24px;
         z-index: 9999;
     }}
     </style>
