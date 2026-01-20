@@ -36,10 +36,25 @@ st.markdown(
         background-attachment: fixed;
     }}
 
-    /* Force buttons to stay on one line */
+    /* Keep buttons single-line */
     div.stButton > button {{
         white-space: nowrap;
         padding: 0.6rem 1.1rem;
+    }}
+
+    /* Inline success badge */
+    .db-success {{
+        background: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+        padding: 8px 14px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 500;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
     }}
     </style>
     """,
@@ -49,22 +64,21 @@ st.markdown(
 # =====================================================
 # HEADER (LEFT + RIGHT)
 # =====================================================
-# ⬇️ Right column widened to avoid text wrapping
-header_left, header_right = st.columns([7, 2])
+header_left, header_right = st.columns([7, 3])
 
 with header_left:
     st.markdown(
         """
-        <h3 style="margin-bottom:4px;">👩‍💻 Hi User!</h3>
+        <h3 style="margin-bottom:4px;">Insight Grid AI</h3>
         <p style="margin-top:0; color:#9ca3af; font-size:14px;">
-            Welcome to Insight Grid AI
+            Where Data, Agents, and Decisions Connect.
         </p>
         """,
         unsafe_allow_html=True
     )
 
 with header_right:
-    st.markdown("<div style='display:flex; justify-content:flex-end;'>", unsafe_allow_html=True)
+    st.markdown("<div style='display:flex; flex-direction:column; align-items:flex-end;'>", unsafe_allow_html=True)
 
     if st.button("🔌 Test DB Connection"):
         try:
@@ -74,7 +88,12 @@ with header_right:
             cur.fetchone()
             cur.close()
             conn.close()
-            st.success("Database connected successfully ✅")
+
+            st.markdown(
+                "<div class='db-success'>✅ Database connected successfully</div>",
+                unsafe_allow_html=True
+            )
+
         except Exception as e:
             st.error("Database connection failed ❌")
             st.exception(e)
