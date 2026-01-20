@@ -55,9 +55,9 @@ header_left, header_right = st.columns([7, 2])
 with header_left:
     st.markdown(
         """
-        <h3 style="margin-bottom:4px;">👩‍💻 Hi User!</h3>
+        <h3 style="margin-bottom:4px;">👩‍💻 Insight Grid AI</h3>
         <p style="margin-top:0; color:#9ca3af; font-size:14px;">
-            Welcome to Insight Grid AI
+            Where Data, Agents, and Decisions Connect
         </p>
         """,
         unsafe_allow_html=True
