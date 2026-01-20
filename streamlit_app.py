@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage
 from agents.analyst_agent import get_analyst_app
 
 # =====================================================
-# PAGE CONFIG
+# PAGE CONFIG (MUST BE FIRST STREAMLIT COMMAND)
 # =====================================================
 st.set_page_config(
     page_title="Insight Grid AI",
@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # =====================================================
-# BACKGROUND IMAGE
+# BACKGROUND IMAGE (LOCAL FILE – SAFE METHOD)
 # =====================================================
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
@@ -24,49 +24,58 @@ bg_image = get_base64_image("assets/background2.jfif")
 st.markdown(
     f"""
     <style>
-    .stApp {{
-        background: linear-gradient(
-            rgba(0,0,0,0.55),
-            rgba(0,0,0,0.55)
-        ),
-        url("data:image/png;base64,{bg_image}");
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-    }}
+        .stApp {{
+            background:
+                linear-gradient(
+                    rgba(0,0,0,0.55),
+                    rgba(0,0,0,0.55)
+                ),
+                url("data:image/png;base64,{bg_image}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }}
 
-    /* Force buttons to stay on one line */
-    div.stButton > button {{
-        white-space: nowrap;
-        padding: 0.6rem 1.1rem;
-    }}
+        /* Force buttons to stay on one line */
+        div.stButton > button {{
+            white-space: nowrap;
+            padding: 0.6rem 1.1rem;
+        }}
     </style>
     """,
     unsafe_allow_html=True
 )
 
 # =====================================================
-# HEADER (LEFT + RIGHT)
+# TOP HEADER (LEFT-ALIGNED, CLEAN)
 # =====================================================
-# ⬇️ Right column widened to avoid text wrapping
-header_left, header_right = st.columns([7, 2])
-
-with header_left:
-    st.markdown(
-        """
-        <h3 style="margin-bottom:4px;">👩‍💻 Insight Grid AI</h3>
-        <p style="margin-top:0; color:#9ca3af; font-size:14px;">
+st.markdown(
+    """
+    <div style="padding: 16px 24px;">
+        <h3 style="margin: 0;">👩‍💻 Insight Grid AI</h3>
+        <p style="margin: 4px 0 0 0; color: #9ca3af; font-size: 14px;">
             Where Data, Agents, and Decisions Connect
         </p>
-        """,
-        unsafe_allow_html=True
-    )
+    </div>
+    <hr style="margin: 12px 0 24px 0;">
+    """,
+    unsafe_allow_html=True
+)
 
-with header_right:
-    st.markdown("<div style='display:flex; justify-content:flex-end;'>", unsafe_allow_html=True)
+# =====================================================
+# MAIN LAYOUT (LEFT = DB | GAP | RIGHT = AUDITOR)
+# =====================================================
+db_col, spacer_col, agent_col = st.columns([1.2, 0.8, 3.0])
 
-    if st.button("🔌 Test DB Connection"):
+# -----------------------------------------------------
+# LEFT COLUMN – DATABASE CONNECTIVITY
+# -----------------------------------------------------
+with db_col:
+    st.subheader("🔌 Database Connectivity Test")
+    st.caption("Verifies database connectivity using parameterized configuration.")
+
+    if st.button("Test Database Connection", key="db_test"):
         try:
             conn = get_db_connection()
             cur = conn.cursor()
@@ -74,38 +83,42 @@ with header_right:
             cur.fetchone()
             cur.close()
             conn.close()
-            st.success("Connected successfully ✅")
+            st.success("Database connected successfully ✅")
         except Exception as e:
-            st.error("Connection failed ❌")
+            st.error("Database connection failed ❌")
             st.exception(e)
 
-    st.markdown("</div>", unsafe_allow_html=True)
+# -----------------------------------------------------
+# MIDDLE COLUMN – SPACER
+# -----------------------------------------------------
+with spacer_col:
+    st.write("")
 
-st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
+# -----------------------------------------------------
+# RIGHT COLUMN – AUDITOR AGENT
+# -----------------------------------------------------
+with agent_col:
+    st.title("📊 Auditor Agent")
+    st.caption("Ask analytical questions based on the connected database")
 
-# =====================================================
-# AUDITOR AGENT
-# =====================================================
-st.title("📊 Auditor Agent")
-st.caption("Ask analytical questions based on the connected database")
+    user_query = st.text_area(
+        "Enter your analysis question",
+        placeholder="e.g. Give me total number of users",
+        key="user_query"
+    )
 
-user_query = st.text_area(
-    "Enter your analysis question",
-    placeholder="e.g. Give me total number of users"
-)
-
-if st.button("Run Analysis"):
-    if not user_query.strip():
-        st.warning("Please enter a question.")
-    else:
-        with st.spinner("Running Auditor Agent..."):
-            try:
-                analyst_app = get_analyst_app()
-                result = analyst_app.invoke({
-                    "messages": [HumanMessage(content=user_query)]
-                })
-                st.success("Analysis completed")
-                st.write(result["messages"][-1].content)
-            except Exception as e:
-                st.error("Agent failed ❌")
-                st.exception(e)
+    if st.button("Run Analysis", key="run_analysis"):
+        if not user_query.strip():
+            st.warning("Please enter a question.")
+        else:
+            with st.spinner("Running Auditor Agent..."):
+                try:
+                    analyst_app = get_analyst_app()
+                    result = analyst_app.invoke({
+                        "messages": [HumanMessage(content=user_query)]
+                    })
+                    st.success("Analysis completed")
+                    st.write(result["messages"][-1].content)
+                except Exception as e:
+                    st.error("Agent failed ❌")
+                    st.exception(e)
