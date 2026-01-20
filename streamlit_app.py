@@ -35,47 +35,43 @@ st.markdown(
         background-repeat: no-repeat;
         background-attachment: fixed;
     }}
-
-    .top-header {{
-        padding: 8px 24px 4px 24px;
-    }}
     </style>
     """,
     unsafe_allow_html=True
 )
 
 # =====================================================
-# HEADER
+# HEADER SECTION (LEFT + RIGHT)
 # =====================================================
-st.markdown(
-    """
-    <div class="top-header">
-        <h3 style="margin:0;">👩‍💻 Hi User!</h3>
-        <p style="margin:4px 0 8px 0; color:#9ca3af; font-size:14px;">
+header_left, header_right = st.columns([4, 1])
+
+with header_left:
+    st.markdown(
+        """
+        <h3 style="margin-bottom:4px;">👩‍💻 Hi User!</h3>
+        <p style="margin-top:0; color:#9ca3af; font-size:14px;">
             Welcome to Insight Grid AI
         </p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+        """,
+        unsafe_allow_html=True
+    )
 
-# =====================================================
-# DB BUTTON (PLACED BELOW HEADER)
-# =====================================================
-if st.button("🔌 Test DB Connection"):
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        cur.fetchone()
-        cur.close()
-        conn.close()
-        st.success("Database connected successfully ✅")
-    except Exception as e:
-        st.error("Database connection failed ❌")
-        st.exception(e)
+with header_right:
+    st.write("")  # vertical alignment spacer
+    if st.button("🔌 Test DB Connection"):
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            cur.close()
+            conn.close()
+            st.success("Database connected successfully ✅")
+        except Exception as e:
+            st.error("Database connection failed ❌")
+            st.exception(e)
 
-st.markdown("<hr style='margin: 12px 0 24px 0;'>", unsafe_allow_html=True)
+st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
 
 # =====================================================
 # AUDITOR AGENT
