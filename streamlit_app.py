@@ -19,7 +19,7 @@ def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
-bg_image = get_base64_image("assets/Image (4).jfif")
+bg_image = get_base64_image("assets/background2.jfif")
 
 st.markdown(
     f"""
