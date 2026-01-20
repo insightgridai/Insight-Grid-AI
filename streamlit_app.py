@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage
 from agents.analyst_agent import get_analyst_app
 
 # =====================================================
-# PAGE CONFIG (MUST BE FIRST STREAMLIT COMMAND)
+# PAGE CONFIG
 # =====================================================
 st.set_page_config(
     page_title="Insight Grid AI",
@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # =====================================================
-# BACKGROUND IMAGE (LOCAL FILE – SAFE METHOD)
+# BACKGROUND IMAGE + CSS
 # =====================================================
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
@@ -24,44 +24,63 @@ bg_image = get_base64_image("assets/background2.jfif")
 st.markdown(
     f"""
     <style>
-        .stApp {{
-            background:
-                linear-gradient(
-                    rgba(0,0,0,0.55),
-                    rgba(0,0,0,0.55)
-                ),
-                url("data:image/png;base64,{bg_image}");
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-        }}
+    .stApp {{
+        background: linear-gradient(
+            rgba(0,0,0,0.55),
+            rgba(0,0,0,0.55)
+        ),
+        url("data:image/png;base64,{bg_image}");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }}
 
-        /* Force buttons to stay on one line */
-        div.stButton > button {{
-            white-space: nowrap;
-            padding: 0.6rem 1.1rem;
-        }}
+    /* Force buttons to stay on one line */
+    div.stButton > button {{
+        white-space: nowrap;
+        padding: 0.6rem 1.1rem;
+    }}
     </style>
     """,
     unsafe_allow_html=True
 )
 
 # =====================================================
-# TOP HEADER (LEFT-ALIGNED, CLEAN)
+# HEADER (LEFT + RIGHT)
 # =====================================================
-st.markdown(
-    """
-    <div style="padding: 16px 24px;">
-        <h3 style="margin: 0;">👩‍💻 Insight Grid AI</h3>
-        <p style="margin: 4px 0 0 0; color: #9ca3af; font-size: 14px;">
+header_left, header_right = st.columns([7, 2])
+
+with header_left:
+    st.markdown(
+        """
+        <h3 style="margin-bottom:4px;">👩‍💻 Insight Grid AI</h3>
+        <p style="margin-top:0; color:#9ca3af; font-size:14px;">
             Where Data, Agents, and Decisions Connect
         </p>
-    </div>
-    <hr style="margin: 12px 0 24px 0;">
-    """,
-    unsafe_allow_html=True
-)
+        """,
+        unsafe_allow_html=True
+    )
+
+with header_right:
+    st.markdown("<div style='display:flex; justify-content:flex-end;'>", unsafe_allow_html=True)
+
+    if st.button("🔌 Test DB Connection", key="db_test"):
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            cur.close()
+            conn.close()
+            st.success("Connected successfully ✅")
+        except Exception as e:
+            st.error("Connection failed ❌")
+            st.exception(e)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
 
 # =====================================================
 # MAIN LAYOUT (LEFT = DB | GAP | RIGHT = AUDITOR)
@@ -75,7 +94,7 @@ with db_col:
     st.subheader("🔌 Database Connectivity Test")
     st.caption("Verifies database connectivity using parameterized configuration.")
 
-    if st.button("Test Database Connection", key="db_test"):
+    if st.button("Test Database Connection", key="db_test2"):
         try:
             conn = get_db_connection()
             cur = conn.cursor()
