@@ -41,9 +41,9 @@ st.markdown(
 )
 
 # =====================================================
-# HEADER SECTION (LEFT + RIGHT)
+# HEADER SECTION (LEFT / RIGHT)
 # =====================================================
-header_left, header_right = st.columns([4, 1])
+header_left, header_right = st.columns([8, 1])
 
 with header_left:
     st.markdown(
@@ -57,7 +57,11 @@ with header_left:
     )
 
 with header_right:
-    st.write("")  # vertical alignment spacer
+    st.markdown(
+        "<div style='display:flex; justify-content:flex-end;'>",
+        unsafe_allow_html=True
+    )
+
     if st.button("🔌 Test DB Connection"):
         try:
             conn = get_db_connection()
@@ -70,6 +74,8 @@ with header_right:
         except Exception as e:
             st.error("Database connection failed ❌")
             st.exception(e)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
 
