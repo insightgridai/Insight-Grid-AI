@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage
 from agents.analyst_agent import get_analyst_app
 
 # =====================================================
-# PAGE CONFIG
+# PAGE CONFIG (MUST BE FIRST)
 # =====================================================
 st.set_page_config(
     page_title="Insight Grid AI",
@@ -36,17 +36,17 @@ st.markdown(
         background-attachment: fixed;
     }}
 
-    /* Move header upward */
+    /* Header positioning */
     .top-header {{
         padding: 6px 24px 0px 24px;
     }}
 
     /* Floating DB button */
-    .db-float {{
+    #db-float {{
         position: fixed;
-        top: 16px;
-        left: 24px;
-        z-index: 9999;
+        top: 14px;
+        right: 80px;
+        z-index: 10000;
     }}
     </style>
     """,
@@ -54,23 +54,24 @@ st.markdown(
 )
 
 # =====================================================
-# FLOATING DATABASE BUTTON (TOP RIGHT)
+# FLOATING DB CONNECTION BUTTON (TOP RIGHT)
 # =====================================================
-with st.container():
-    st.markdown('<div class="db-float">', unsafe_allow_html=True)
-    if st.button("🔌 Test DB Connection"):
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.fetchone()
-            cur.close()
-            conn.close()
-            st.success("Database connected successfully ✅")
-        except Exception as e:
-            st.error("Database connection failed ❌")
-            st.exception(e)
-    st.markdown("</div>", unsafe_allow_html=True)
+st.markdown('<div id="db-float">', unsafe_allow_html=True)
+
+if st.button("🔌 Test DB Connection"):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        cur.close()
+        conn.close()
+        st.success("Database connected successfully ✅")
+    except Exception as e:
+        st.error("Database connection failed ❌")
+        st.exception(e)
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 # =====================================================
 # TOP HEADER
@@ -89,7 +90,7 @@ st.markdown(
 )
 
 # =====================================================
-# MAIN CONTENT – AUDITOR AGENT (CENTERED & CLEAN)
+# MAIN CONTENT – AUDITOR AGENT
 # =====================================================
 st.title("📊 Auditor Agent")
 st.caption("Ask analytical questions based on the connected database")
