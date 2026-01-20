@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage
 from agents.analyst_agent import get_analyst_app
 
 # =====================================================
-# PAGE CONFIG (MUST BE FIRST)
+# PAGE CONFIG
 # =====================================================
 st.set_page_config(
     page_title="Insight Grid AI",
@@ -36,17 +36,8 @@ st.markdown(
         background-attachment: fixed;
     }}
 
-    /* Header positioning */
     .top-header {{
-        padding: 6px 24px 0px 24px;
-    }}
-
-    /* Floating DB button */
-    #db-float {{
-        position: fixed;
-        top: 14px;
-        left: 80px;
-        z-index: 10000;
+        padding: 8px 24px 4px 24px;
     }}
     </style>
     """,
@@ -54,10 +45,23 @@ st.markdown(
 )
 
 # =====================================================
-# FLOATING DB CONNECTION BUTTON (TOP RIGHT)
+# HEADER
 # =====================================================
-st.markdown('<div id="db-float">', unsafe_allow_html=True)
+st.markdown(
+    """
+    <div class="top-header">
+        <h3 style="margin:0;">👩‍💻 Hi User!</h3>
+        <p style="margin:4px 0 8px 0; color:#9ca3af; font-size:14px;">
+            Welcome to Insight Grid AI
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
+# =====================================================
+# DB BUTTON (PLACED BELOW HEADER)
+# =====================================================
 if st.button("🔌 Test DB Connection"):
     try:
         conn = get_db_connection()
@@ -71,26 +75,10 @@ if st.button("🔌 Test DB Connection"):
         st.error("Database connection failed ❌")
         st.exception(e)
 
-st.markdown("</div>", unsafe_allow_html=True)
+st.markdown("<hr style='margin: 12px 0 24px 0;'>", unsafe_allow_html=True)
 
 # =====================================================
-# TOP HEADER
-# =====================================================
-st.markdown(
-    """
-    <div class="top-header">
-        <h3 style="margin:0;">👩‍💻 Hi User!</h3>
-        <p style="margin:2px 0 0 0; color:#9ca3af; font-size:14px;">
-            Welcome to Insight Grid AI
-        </p>
-    </div>
-    <hr style="margin:8px 0 24px 0;">
-    """,
-    unsafe_allow_html=True
-)
-
-# =====================================================
-# MAIN CONTENT – AUDITOR AGENT
+# AUDITOR AGENT
 # =====================================================
 st.title("📊 Auditor Agent")
 st.caption("Ask analytical questions based on the connected database")
