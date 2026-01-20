@@ -74,9 +74,9 @@ with header_right:
             cur.fetchone()
             cur.close()
             conn.close()
-            st.success("Database connected successfully ✅")
+            st.success("Connected successfully ✅")
         except Exception as e:
-            st.error("Database connection failed ❌")
+            st.error("Connection failed ❌")
             st.exception(e)
 
     st.markdown("</div>", unsafe_allow_html=True)
