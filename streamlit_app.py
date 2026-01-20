@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # =====================================================
-# BACKGROUND IMAGE + CSS
+# BACKGROUND IMAGE
 # =====================================================
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
@@ -49,6 +49,7 @@ st.markdown(
 # =====================================================
 # HEADER (LEFT + RIGHT)
 # =====================================================
+# ⬇️ Right column widened to avoid text wrapping
 header_left, header_right = st.columns([7, 2])
 
 with header_left:
@@ -65,7 +66,7 @@ with header_left:
 with header_right:
     st.markdown("<div style='display:flex; justify-content:flex-end;'>", unsafe_allow_html=True)
 
-    if st.button("🔌 Test DB Connection", key="db_test"):
+    if st.button("🔌 Test DB Connection"):
         try:
             conn = get_db_connection()
             cur = conn.cursor()
@@ -83,61 +84,28 @@ with header_right:
 st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
 
 # =====================================================
-# MAIN LAYOUT (LEFT = DB | GAP | RIGHT = AUDITOR)
+# AUDITOR AGENT
 # =====================================================
-db_col, spacer_col, agent_col = st.columns([1.2, 0.8, 3.0])
+st.title("📊 Auditor Agent")
+st.caption("Ask analytical questions based on the connected database")
 
-# -----------------------------------------------------
-# LEFT COLUMN – DATABASE CONNECTIVITY
-# -----------------------------------------------------
-with db_col:
-    st.subheader("🔌 Database Connectivity Test")
-    st.caption("Verifies database connectivity using parameterized configuration.")
+user_query = st.text_area(
+    "Enter your analysis question",
+    placeholder="e.g. Give me total number of users"
+)
 
-    if st.button("Test Database Connection", key="db_test2"):
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.fetchone()
-            cur.close()
-            conn.close()
-            st.success("Database connected successfully ✅")
-        except Exception as e:
-            st.error("Database connection failed ❌")
-            st.exception(e)
-
-# -----------------------------------------------------
-# MIDDLE COLUMN – SPACER
-# -----------------------------------------------------
-with spacer_col:
-    st.write("")
-
-# -----------------------------------------------------
-# RIGHT COLUMN – AUDITOR AGENT
-# -----------------------------------------------------
-with agent_col:
-    st.title("📊 Auditor Agent")
-    st.caption("Ask analytical questions based on the connected database")
-
-    user_query = st.text_area(
-        "Enter your analysis question",
-        placeholder="e.g. Give me total number of users",
-        key="user_query"
-    )
-
-    if st.button("Run Analysis", key="run_analysis"):
-        if not user_query.strip():
-            st.warning("Please enter a question.")
-        else:
-            with st.spinner("Running Auditor Agent..."):
-                try:
-                    analyst_app = get_analyst_app()
-                    result = analyst_app.invoke({
-                        "messages": [HumanMessage(content=user_query)]
-                    })
-                    st.success("Analysis completed")
-                    st.write(result["messages"][-1].content)
-                except Exception as e:
-                    st.error("Agent failed ❌")
-                    st.exception(e)
+if st.button("Run Analysis"):
+    if not user_query.strip():
+        st.warning("Please enter a question.")
+    else:
+        with st.spinner("Running Auditor Agent..."):
+            try:
+                analyst_app = get_analyst_app()
+                result = analyst_app.invoke({
+                    "messages": [HumanMessage(content=user_query)]
+                })
+                st.success("Analysis completed")
+                st.write(result["messages"][-1].content)
+            except Exception as e:
+                st.error("Agent failed ❌")
+                st.exception(e)
