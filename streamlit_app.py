@@ -87,11 +87,13 @@ with header_container:
         )
 
     with col_right:
+        # Use flex column aligned right
         st.markdown(
-            "<div style='display:flex; flex-direction:column; align-items:flex-end; margin-left:auto;'>",
+            "<div style='display:flex; flex-direction:column; align-items:flex-end;'>",
             unsafe_allow_html=True
         )
 
+        # DB connection button
         if st.button("🔌 Test DB Connection"):
             try:
                 conn = get_db_connection()
@@ -102,12 +104,15 @@ with header_container:
                 conn.close()
 
                 st.markdown(
-                    "<div class='db-success'>✅ Database connected successfully</div>",
+                    "<div class='db-success' style='white-space:nowrap;'>✅ Database connected successfully</div>",
                     unsafe_allow_html=True
                 )
 
             except Exception as e:
-                st.error("Database connection failed ❌")
+                st.markdown(
+                    "<div style='color:red; white-space:nowrap;'>❌ Database connection failed</div>",
+                    unsafe_allow_html=True
+                )
                 st.exception(e)
 
         st.markdown("</div>", unsafe_allow_html=True)
