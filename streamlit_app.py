@@ -35,15 +35,22 @@ st.markdown(
         background-repeat: no-repeat;
         background-attachment: fixed;
     }}
+
+    /* Force buttons to stay on one line */
+    div.stButton > button {{
+        white-space: nowrap;
+        padding: 0.6rem 1.1rem;
+    }}
     </style>
     """,
     unsafe_allow_html=True
 )
 
 # =====================================================
-# HEADER SECTION (LEFT / RIGHT)
+# HEADER (LEFT + RIGHT)
 # =====================================================
-header_left, header_right = st.columns([8, 1])
+# ⬇️ Right column widened to avoid text wrapping
+header_left, header_right = st.columns([7, 2])
 
 with header_left:
     st.markdown(
@@ -57,10 +64,7 @@ with header_left:
     )
 
 with header_right:
-    st.markdown(
-        "<div style='display:flex; justify-content:flex-end;'>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<div style='display:flex; justify-content:flex-end;'>", unsafe_allow_html=True)
 
     if st.button("🔌 Test DB Connection"):
         try:
@@ -87,7 +91,7 @@ st.caption("Ask analytical questions based on the connected database")
 
 user_query = st.text_area(
     "Enter your analysis question",
-    placeholder="e.g. What is the total number of users?"
+    placeholder="e.g. Give me total number of users"
 )
 
 if st.button("Run Analysis"):
