@@ -1,7 +1,5 @@
 import streamlit as st
 import base64
-import streamlit.components.v1 as components
-
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
 from agents.analyst_agent import get_analyst_app
@@ -9,16 +7,10 @@ from agents.analyst_agent import get_analyst_app
 # =====================================================
 # PAGE CONFIG
 # =====================================================
-st.set_page_config(page_title="Insight Grid AI", layout="wide")
-
-# =====================================================
-# SESSION STATE
-# =====================================================
-if "query" not in st.session_state:
-    st.session_state.query = ""
-
-if "voice_trigger" not in st.session_state:
-    st.session_state.voice_trigger = 0
+st.set_page_config(
+    page_title="Insight Grid AI",
+    layout="wide"
+)
 
 # =====================================================
 # BACKGROUND IMAGE
@@ -33,20 +25,21 @@ st.markdown(
     f"""
     <style>
     .stApp {{
-        background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)),
+        background: linear-gradient(
+            rgba(0,0,0,0.55),
+            rgba(0,0,0,0.55)
+        ),
         url("data:image/png;base64,{bg_image}");
         background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
         background-attachment: fixed;
     }}
-    .mic-btn {{
-        background: #0f62fe;
-        color: white;
-        border: none;
-        border-radius: 50%;
-        width: 48px;
-        height: 48px;
-        font-size: 20px;
-        cursor: pointer;
+
+    /* Force buttons to stay on one line */
+    div.stButton > button {{
+        white-space: nowrap;
+        padding: 0.6rem 1.1rem;
     }}
     </style>
     """,
@@ -54,90 +47,63 @@ st.markdown(
 )
 
 # =====================================================
-# HEADER
+# HEADER (LEFT + RIGHT)
 # =====================================================
-st.markdown("## 👩‍💻 Insight Grid AI")
-st.caption("Where Data, Agents, and Decisions Connect")
-st.markdown("---")
+# ⬇️ Right column widened to avoid text wrapping
+header_left, header_right = st.columns([7, 2])
+
+with header_left:
+    st.markdown(
+        """
+        <h3 style="margin-bottom:4px;">👩‍💻 Insight Grid AI</h3>
+        <p style="margin-top:0; color:#9ca3af; font-size:14px;">
+            Where Data, Agents, and Decisions Connect
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+
+with header_right:
+    st.markdown("<div style='display:flex; justify-content:flex-end;'>", unsafe_allow_html=True)
+
+    if st.button("🔌 Test DB Connection"):
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            cur.close()
+            conn.close()
+            st.success("Connection Successful ✅")
+        except Exception as e:
+            st.error("Connection Failed ❌")
+            st.exception(e)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
 
 # =====================================================
-# 🎙️ VOICE BUTTON (CHATGPT STYLE)
+# AUDITOR AGENT
 # =====================================================
-components.html(
-    """
-    <button class="mic-btn" onclick="startDictation()">🎤</button>
+st.title("📊 Auditor Agent")
+st.caption("Ask analytical questions based on the connected database")
 
-    <script>
-    function startDictation() {
-        const rec = new webkitSpeechRecognition();
-        rec.lang = "en-US";
-        rec.interimResults = false;
-
-        rec.onresult = function(e) {
-            const text = e.results[0][0].transcript;
-            window.parent.postMessage(
-                { type: "VOICE_TEXT", value: text },
-                "*"
-            );
-        };
-        rec.start();
-    }
-    </script>
-    """,
-    height=70,
-)
-
-# =====================================================
-# JS → STREAMLIT SYNC (CRITICAL)
-# =====================================================
-components.html(
-    """
-    <script>
-    window.addEventListener("message", (event) => {
-        if (event.data.type === "VOICE_TEXT") {
-            const input = document.getElementById("voice_input");
-            input.value = event.data.value;
-            input.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-    });
-    </script>
-    """,
-    height=0,
-)
-
-# =====================================================
-# HIDDEN INPUT (FORCE STREAMLIT RERUN)
-# =====================================================
-voice_value = st.text_input(
-    "",
-    key="voice_input",
-    label_visibility="collapsed"
-)
-
-if voice_value:
-    st.session_state.query = voice_value
-
-# =====================================================
-# TEXT AREA (VISIBLE, EDITABLE)
-# =====================================================
 user_query = st.text_area(
     "Enter your analysis question",
-    value=st.session_state.query,
     placeholder="e.g. Give me total number of users"
 )
 
-# =====================================================
-# RUN ANALYSIS
-# =====================================================
 if st.button("Run Analysis"):
     if not user_query.strip():
         st.warning("Please enter a question.")
     else:
         with st.spinner("Running Auditor Agent..."):
             try:
-                result = get_analyst_app().invoke(
-                    {"messages": [HumanMessage(content=user_query)]}
-                )
+                analyst_app = get_analyst_app()
+                result = analyst_app.invoke({
+                    "messages": [HumanMessage(content=user_query)]
+                })
                 st.success("Analysis completed")
                 st.write(result["messages"][-1].content)
             except Exception as e:
