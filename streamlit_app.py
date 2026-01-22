@@ -15,6 +15,12 @@ st.set_page_config(
 )
 
 # =====================================================
+# SESSION STATE (IMPORTANT)
+# =====================================================
+if "query" not in st.session_state:
+    st.session_state.query = ""
+
+# =====================================================
 # BACKGROUND IMAGE
 # =====================================================
 def get_base64_image(image_path):
@@ -41,6 +47,17 @@ st.markdown(
     div.stButton > button {{
         white-space: nowrap;
         padding: 0.6rem 1.1rem;
+    }}
+
+    .mic-btn {{
+        background: #0f62fe;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 48px;
+        height: 48px;
+        font-size: 20px;
+        cursor: pointer;
     }}
     </style>
     """,
@@ -86,43 +103,58 @@ st.title("📊 Auditor Agent")
 st.caption("Ask analytical questions based on the connected database")
 
 # =====================================================
-# 🎙️ VOICE INPUT
+# 🎙️ CHATGPT-STYLE VOICE BUTTON
 # =====================================================
-st.markdown("### 🎙️ Ask using Voice")
-
 components.html(
     """
+    <button class="mic-btn" onclick="startDictation()">🎤</button>
+
     <script>
     function startDictation() {
-        var recognition = new webkitSpeechRecognition();
+        const recognition = new webkitSpeechRecognition();
         recognition.lang = "en-US";
         recognition.interimResults = false;
 
         recognition.onresult = function(event) {
             const text = event.results[0][0].transcript;
-            const textarea = window.parent.document.querySelector("textarea");
-            if (textarea) {
-                textarea.value = text;
-                textarea.dispatchEvent(new Event("input", { bubbles: true }));
-            }
+            window.parent.postMessage(
+                { type: "VOICE_TEXT", text: text },
+                "*"
+            );
         };
         recognition.start();
     }
     </script>
-
-    <button onclick="startDictation()"
-        style="padding:10px 18px; font-size:16px; cursor:pointer;">
-        🎤 Speak
-    </button>
     """,
-    height=80,
+    height=70,
 )
 
 # =====================================================
-# TEXT INPUT (UNCHANGED)
+# CAPTURE VOICE → STREAMLIT (CRITICAL FIX)
+# =====================================================
+components.html(
+    """
+    <script>
+    window.addEventListener("message", (event) => {
+        if (event.data.type === "VOICE_TEXT") {
+            const textarea = window.parent.document.querySelector("textarea");
+            if (textarea) {
+                textarea.value = event.data.text;
+                textarea.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+        }
+    });
+    </script>
+    """,
+    height=0,
+)
+
+# =====================================================
+# TEXT INPUT (BOUND TO SESSION STATE)
 # =====================================================
 user_query = st.text_area(
     "Enter your analysis question",
+    key="query",
     placeholder="e.g. Give me total number of users"
 )
 
@@ -130,14 +162,14 @@ user_query = st.text_area(
 # RUN ANALYSIS
 # =====================================================
 if st.button("Run Analysis"):
-    if not user_query.strip():
+    if not st.session_state.query.strip():
         st.warning("Please enter a question.")
     else:
         with st.spinner("Running Auditor Agent..."):
             try:
                 analyst_app = get_analyst_app()
                 result = analyst_app.invoke({
-                    "messages": [HumanMessage(content=user_query)]
+                    "messages": [HumanMessage(content=st.session_state.query)]
                 })
                 st.success("Analysis completed")
                 st.write(result["messages"][-1].content)
