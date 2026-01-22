@@ -1,5 +1,7 @@
 import streamlit as st
 import base64
+import streamlit.components.v1 as components
+
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
 from agents.analyst_agent import get_analyst_app
@@ -36,7 +38,6 @@ st.markdown(
         background-attachment: fixed;
     }}
 
-    /* Force buttons to stay on one line */
     div.stButton > button {{
         white-space: nowrap;
         padding: 0.6rem 1.1rem;
@@ -47,9 +48,8 @@ st.markdown(
 )
 
 # =====================================================
-# HEADER (LEFT + RIGHT)
+# HEADER
 # =====================================================
-# ⬇️ Right column widened to avoid text wrapping
 header_left, header_right = st.columns([7, 2])
 
 with header_left:
@@ -64,8 +64,6 @@ with header_left:
     )
 
 with header_right:
-    st.markdown("<div style='display:flex; justify-content:flex-end;'>", unsafe_allow_html=True)
-
     if st.button("🔌 Test DB Connection"):
         try:
             conn = get_db_connection()
@@ -79,8 +77,6 @@ with header_right:
             st.error("Connection Failed ❌")
             st.exception(e)
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
 st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
 
 # =====================================================
@@ -89,11 +85,50 @@ st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
 st.title("📊 Auditor Agent")
 st.caption("Ask analytical questions based on the connected database")
 
+# =====================================================
+# 🎙️ VOICE INPUT
+# =====================================================
+st.markdown("### 🎙️ Ask using Voice")
+
+components.html(
+    """
+    <script>
+    function startDictation() {
+        var recognition = new webkitSpeechRecognition();
+        recognition.lang = "en-US";
+        recognition.interimResults = false;
+
+        recognition.onresult = function(event) {
+            const text = event.results[0][0].transcript;
+            const textarea = window.parent.document.querySelector("textarea");
+            if (textarea) {
+                textarea.value = text;
+                textarea.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+        };
+        recognition.start();
+    }
+    </script>
+
+    <button onclick="startDictation()"
+        style="padding:10px 18px; font-size:16px; cursor:pointer;">
+        🎤 Speak
+    </button>
+    """,
+    height=80,
+)
+
+# =====================================================
+# TEXT INPUT (UNCHANGED)
+# =====================================================
 user_query = st.text_area(
     "Enter your analysis question",
     placeholder="e.g. Give me total number of users"
 )
 
+# =====================================================
+# RUN ANALYSIS
+# =====================================================
 if st.button("Run Analysis"):
     if not user_query.strip():
         st.warning("Please enter a question.")
