@@ -9,16 +9,16 @@ from agents.analyst_agent import get_analyst_app
 # =====================================================
 # PAGE CONFIG
 # =====================================================
-st.set_page_config(
-    page_title="Insight Grid AI",
-    layout="wide"
-)
+st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 # =====================================================
-# SESSION STATE (IMPORTANT)
+# SESSION STATE
 # =====================================================
 if "query" not in st.session_state:
     st.session_state.query = ""
+
+if "voice_trigger" not in st.session_state:
+    st.session_state.voice_trigger = 0
 
 # =====================================================
 # BACKGROUND IMAGE
@@ -33,22 +33,11 @@ st.markdown(
     f"""
     <style>
     .stApp {{
-        background: linear-gradient(
-            rgba(0,0,0,0.55),
-            rgba(0,0,0,0.55)
-        ),
+        background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)),
         url("data:image/png;base64,{bg_image}");
         background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
         background-attachment: fixed;
     }}
-
-    div.stButton > button {{
-        white-space: nowrap;
-        padding: 0.6rem 1.1rem;
-    }}
-
     .mic-btn {{
         background: #0f62fe;
         color: white;
@@ -67,43 +56,12 @@ st.markdown(
 # =====================================================
 # HEADER
 # =====================================================
-header_left, header_right = st.columns([7, 2])
-
-with header_left:
-    st.markdown(
-        """
-        <h3 style="margin-bottom:4px;">👩‍💻 Insight Grid AI</h3>
-        <p style="margin-top:0; color:#9ca3af; font-size:14px;">
-            Where Data, Agents, and Decisions Connect
-        </p>
-        """,
-        unsafe_allow_html=True
-    )
-
-with header_right:
-    if st.button("🔌 Test DB Connection"):
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.fetchone()
-            cur.close()
-            conn.close()
-            st.success("Connection Successful ✅")
-        except Exception as e:
-            st.error("Connection Failed ❌")
-            st.exception(e)
-
-st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
+st.markdown("## 👩‍💻 Insight Grid AI")
+st.caption("Where Data, Agents, and Decisions Connect")
+st.markdown("---")
 
 # =====================================================
-# AUDITOR AGENT
-# =====================================================
-st.title("📊 Auditor Agent")
-st.caption("Ask analytical questions based on the connected database")
-
-# =====================================================
-# 🎙️ CHATGPT-STYLE VOICE BUTTON
+# 🎙️ VOICE BUTTON (CHATGPT STYLE)
 # =====================================================
 components.html(
     """
@@ -111,18 +69,18 @@ components.html(
 
     <script>
     function startDictation() {
-        const recognition = new webkitSpeechRecognition();
-        recognition.lang = "en-US";
-        recognition.interimResults = false;
+        const rec = new webkitSpeechRecognition();
+        rec.lang = "en-US";
+        rec.interimResults = false;
 
-        recognition.onresult = function(event) {
-            const text = event.results[0][0].transcript;
+        rec.onresult = function(e) {
+            const text = e.results[0][0].transcript;
             window.parent.postMessage(
-                { type: "VOICE_TEXT", text: text },
+                { type: "VOICE_TEXT", value: text },
                 "*"
             );
         };
-        recognition.start();
+        rec.start();
     }
     </script>
     """,
@@ -130,18 +88,16 @@ components.html(
 )
 
 # =====================================================
-# CAPTURE VOICE → STREAMLIT (CRITICAL FIX)
+# JS → STREAMLIT SYNC (CRITICAL)
 # =====================================================
 components.html(
     """
     <script>
     window.addEventListener("message", (event) => {
         if (event.data.type === "VOICE_TEXT") {
-            const textarea = window.parent.document.querySelector("textarea");
-            if (textarea) {
-                textarea.value = event.data.text;
-                textarea.dispatchEvent(new Event("input", { bubbles: true }));
-            }
+            const input = document.getElementById("voice_input");
+            input.value = event.data.value;
+            input.dispatchEvent(new Event("change", { bubbles: true }));
         }
     });
     </script>
@@ -150,11 +106,23 @@ components.html(
 )
 
 # =====================================================
-# TEXT INPUT (BOUND TO SESSION STATE)
+# HIDDEN INPUT (FORCE STREAMLIT RERUN)
+# =====================================================
+voice_value = st.text_input(
+    "",
+    key="voice_input",
+    label_visibility="collapsed"
+)
+
+if voice_value:
+    st.session_state.query = voice_value
+
+# =====================================================
+# TEXT AREA (VISIBLE, EDITABLE)
 # =====================================================
 user_query = st.text_area(
     "Enter your analysis question",
-    key="query",
+    value=st.session_state.query,
     placeholder="e.g. Give me total number of users"
 )
 
@@ -162,15 +130,14 @@ user_query = st.text_area(
 # RUN ANALYSIS
 # =====================================================
 if st.button("Run Analysis"):
-    if not st.session_state.query.strip():
+    if not user_query.strip():
         st.warning("Please enter a question.")
     else:
         with st.spinner("Running Auditor Agent..."):
             try:
-                analyst_app = get_analyst_app()
-                result = analyst_app.invoke({
-                    "messages": [HumanMessage(content=st.session_state.query)]
-                })
+                result = get_analyst_app().invoke(
+                    {"messages": [HumanMessage(content=user_query)]}
+                )
                 st.success("Analysis completed")
                 st.write(result["messages"][-1].content)
             except Exception as e:
