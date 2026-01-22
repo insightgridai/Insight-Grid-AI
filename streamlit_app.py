@@ -74,9 +74,9 @@ with header_right:
             cur.fetchone()
             cur.close()
             conn.close()
-            st.success("Connected successfully ✅")
+            st.success("Connection Successful ✅")
         except Exception as e:
-            st.error("Connection failed ❌")
+            st.error("Connection Failed ❌")
             st.exception(e)
 
     st.markdown("</div>", unsafe_allow_html=True)
