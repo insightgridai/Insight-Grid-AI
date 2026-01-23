@@ -116,29 +116,54 @@ user_query = st.text_area(
 
 st.markdown(
     """
-    <div class="mic-overlay" onclick="startDictation()">🎤</div>
-    </div>
+    <div class="mic-overlay" id="micBtn">🎤</div>
 
     <script>
-    function startDictation() {
-        const rec = new webkitSpeechRecognition();
-        rec.lang = "en-US";
-        rec.interimResults = false;
+    const micBtn = document.getElementById("micBtn");
 
-        rec.onresult = function(e) {
-            const text = e.results[0][0].transcript;
-            const textarea = window.parent.document.querySelector("textarea");
-            if (textarea) {
-                textarea.value = text;
-                textarea.dispatchEvent(new Event("input", {{ bubbles: true }}));
+    micBtn.onclick = () => {
+        try {
+            if (!('webkitSpeechRecognition' in window)) {
+                alert("Speech recognition not supported. Use Chrome or Edge.");
+                return;
             }
-        };
-        rec.start();
-    }
+
+            const recognition = new webkitSpeechRecognition();
+            recognition.lang = "en-US";
+            recognition.interimResults = false;
+            recognition.continuous = false;
+
+            recognition.onstart = () => {
+                console.log("🎙️ Mic started");
+            };
+
+            recognition.onerror = (e) => {
+                alert("Mic error: " + e.error);
+            };
+
+            recognition.onresult = (e) => {
+                const text = e.results[0][0].transcript;
+                console.log("Voice text:", text);
+
+                const textarea = window.parent.document.querySelector("textarea");
+                if (textarea) {
+                    textarea.value = text;
+                    textarea.dispatchEvent(
+                        new Event("input", { bubbles: true })
+                    );
+                }
+            };
+
+            recognition.start();
+        } catch (err) {
+            alert("Mic failed: " + err.message);
+        }
+    };
     </script>
     """,
     unsafe_allow_html=True
 )
+
 
 # =====================================================
 # RUN ANALYSIS (MANUAL)
