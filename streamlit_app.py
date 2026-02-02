@@ -13,6 +13,20 @@ st.set_page_config(
 )
 
 # =====================================================
+# 🔒 HIDE STREAMLIT TOP BAR & FOOTER (ADD HERE)
+# =====================================================
+st.markdown(
+    """
+    <style>
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    [data-testid="stToolbar"] {display: none;}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# =====================================================
 # BACKGROUND IMAGE
 # =====================================================
 def get_base64_image(image_path):
