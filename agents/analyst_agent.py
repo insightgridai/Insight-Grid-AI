@@ -21,7 +21,7 @@ def get_analyst_app():
     llm = ChatOpenAI(
         model="gpt-5-nano",
         temperature=0,
-        max_tokens=100   # restrict output tokens
+        max_tokens=120   # restrict output tokens
     )
 
     analyst_llm = llm.bind_tools([get_schema])
