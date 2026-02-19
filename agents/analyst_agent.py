@@ -33,7 +33,7 @@ def get_analyst_app():
         content=(
             "You are a data analyst. "
             "Use get_schema tool once if needed. "
-            "Then ask 5 concise questions for report creation."
+            "Then ask 2 concise questions for report creation."
         )
     )
 
