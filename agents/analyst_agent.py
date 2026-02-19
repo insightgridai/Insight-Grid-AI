@@ -31,7 +31,7 @@ def get_analyst_app():
             content=(
                 "You are a data analyst. "
                 "Start by understanding the database schema using tools. "
-                "Then return 1 line schema summary and ask exactly 1 insightful question."
+                "Then return 1 line schema summary and ask exactly 2 insightful questions."
             )
         )
     ]
