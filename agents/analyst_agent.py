@@ -2,11 +2,10 @@ from typing import Annotated, TypedDict
 
 from langgraph.graph import StateGraph, END, START
 from langgraph.graph.message import AnyMessage, add_messages
-from langgraph.prebuilt import ToolNode, create_react_agent, tools_condition
-from langchain_core.messages import SystemMessage, HumanMessage
+from langgraph.prebuilt import ToolNode, tools_condition
+from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 
-from tools.execute_sql import execute_sql
 from tools.get_schema import get_schema
 
 
@@ -17,26 +16,34 @@ class AnalystState(TypedDict):
 
 
 def get_analyst_app():
-    """
-    Creates and returns the Analyst Agent workflow.
-    """
 
-    llm = ChatOpenAI(model="gpt-5-nano")
+    # 🔥 ONLY REQUIRED CHANGE: limit tokens
+    llm = ChatOpenAI(
+        model="gpt-5-nano",
+        temperature=0,
+        max_tokens=120   # restrict output tokens
+    )
 
     analyst_llm = llm.bind_tools([get_schema])
 
     analyst_system_message = [
         SystemMessage(
             content=(
-                "You are a data analyst. Start by understanding the database schema "
-                "using tools. Then ask at least 2 insightful questions in a single "
-                "response that will help in creating a comprehensive report."
+                "You are a data analyst. "
+                "Start by understanding the database schema using tools. "
+                "Then return 1 line schema summary and ask exactly 2 insightful questions."
             )
         )
     ]
 
     def analyst(state: AnalystState) -> AnalystState:
-        response = analyst_llm.invoke(analyst_system_message + state["messages"])
+        # 🔥 Limit history to avoid token explosion
+        limited_messages = state["messages"][-3:]
+
+        response = analyst_llm.invoke(
+            analyst_system_message + limited_messages
+        )
+
         return {"messages": [response]}
 
     analyst_graph = StateGraph(AnalystState)
