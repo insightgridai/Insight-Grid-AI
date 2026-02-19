@@ -17,46 +17,63 @@ class AnalystState(TypedDict):
 
 def get_analyst_app():
 
-    # 🔥 Limit output tokens
     llm = ChatOpenAI(
         model="gpt-5-nano",
         temperature=0,
-        max_tokens=150
+        max_tokens=120
     )
 
     analyst_llm = llm.bind_tools([get_schema])
 
-    # 🔥 Shortened system prompt
     analyst_system_message = [
         SystemMessage(
             content=(
-                "You are a data analyst. "
-                "Always call get_schema first. "
-                "Then return schema information clearly "
-                "and ask exactly 2 insightful questions."
+                "Call get_schema tool first."
             )
         )
     ]
 
-    def analyst(state: AnalystState) -> AnalystState:
-        # 🔥 Limit message history to reduce tokens
-        limited_messages = state["messages"][-4:]
-
+    def analyst(state: AnalystState):
+        limited_messages = state["messages"][-3:]
         response = analyst_llm.invoke(
             analyst_system_message + limited_messages
         )
+        return {"messages": [response]}
+
+    # Tool node
+    tool_node = ToolNode([get_schema])
+
+    def tools(state: AnalystState):
+        result = tool_node.invoke(state)
+        return {"messages": result["messages"]}
+
+    # 🔥 Final visible response node
+    def final_response(state: AnalystState):
+        limited_messages = state["messages"][-3:]
+
+        response = llm.invoke([
+            SystemMessage(
+                content=(
+                    "Using the schema result, give:\n"
+                    "1 line schema summary.\n"
+                    "Then ask exactly 2 insightful questions.\n"
+                    "Keep answer short."
+                )
+            )
+        ] + limited_messages)
 
         return {"messages": [response]}
 
+    # Build graph
     analyst_graph = StateGraph(AnalystState)
 
     analyst_graph.add_node("analyst", analyst)
-    analyst_graph.add_node("tools", ToolNode([get_schema]))
+    analyst_graph.add_node("tools", tools)
+    analyst_graph.add_node("final", final_response)
 
     analyst_graph.add_edge(START, "analyst")
     analyst_graph.add_conditional_edges("analyst", tools_condition)
-
-    # 🔥 After tool call, go to END (no loop)
-    analyst_graph.add_edge("tools", END)
+    analyst_graph.add_edge("tools", "final")
+    analyst_graph.add_edge("final", END)
 
     return analyst_graph.compile()
