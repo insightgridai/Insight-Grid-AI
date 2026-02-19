@@ -21,7 +21,7 @@ def get_analyst_app():
     llm = ChatOpenAI(
         model="gpt-5-nano",
         temperature=0,
-        max_tokens=120   # restrict output tokens
+        max_tokens=100   # restrict output tokens
     )
 
     analyst_llm = llm.bind_tools([get_schema])
@@ -31,7 +31,7 @@ def get_analyst_app():
             content=(
                 "You are a data analyst. "
                 "Start by understanding the database schema using tools. "
-                "Then return 1 line schema summary and ask exactly 2 insightful questions."
+                "Then return 1 line schema summary and ask exactly 2 insightful 1 line questions."
             )
         )
     ]
