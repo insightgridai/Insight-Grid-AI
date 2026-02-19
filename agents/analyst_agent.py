@@ -1,51 +1,83 @@
 from typing import Annotated, TypedDict
-
 from langgraph.graph import StateGraph, END, START
 from langgraph.graph.message import AnyMessage, add_messages
-from langgraph.prebuilt import ToolNode, create_react_agent, tools_condition
+from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 
-from tools.execute_sql import execute_sql
 from tools.get_schema import get_schema
 
 
-# ---------------- Analyst Agent ----------------
+# ---------------- State ----------------
 
 class AnalystState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
+    tool_calls: int
 
+
+# ---------------- App Builder ----------------
 
 def get_analyst_app():
-    """
-    Creates and returns the Analyst Agent workflow.
-    """
 
-    llm = ChatOpenAI(model="gpt-5-nano")
+    # 🔥 Token-Controlled LLM
+    llm = ChatOpenAI(
+        model="gpt-5-nano",
+        temperature=0,
+        max_tokens=200,   # restrict output tokens
+    )
 
     analyst_llm = llm.bind_tools([get_schema])
 
-    analyst_system_message = [
-        SystemMessage(
-            content=(
-                "You are a data analyst. Start by understanding the database schema "
-                "using tools. Then ask at least 5 insightful questions in a single "
-                "response that will help in creating a comprehensive report."
-            )
+    # 🔥 Short System Prompt (less tokens every call)
+    system_prompt = SystemMessage(
+        content=(
+            "You are a data analyst. "
+            "Use get_schema tool once if needed. "
+            "Then ask 5 concise questions for report creation."
         )
-    ]
+    )
 
+    # ---------------- Analyst Node ----------------
     def analyst(state: AnalystState) -> AnalystState:
-        response = analyst_llm.invoke(analyst_system_message + state["messages"])
+
+        # 🔥 Restrict tool loop to max 2 calls
+        if state.get("tool_calls", 0) >= 2:
+            final_prompt = SystemMessage(
+                content="Stop using tools. Generate final 5 concise questions."
+            )
+            limited_messages = state["messages"][-4:]
+            response = llm.invoke([final_prompt] + limited_messages)
+            return {"messages": [response]}
+
+        # 🔥 Limit message history to last 4 messages only
+        limited_messages = state["messages"][-4:]
+
+        response = analyst_llm.invoke(
+            [system_prompt] + limited_messages
+        )
+
         return {"messages": [response]}
 
-    analyst_graph = StateGraph(AnalystState)
+    # ---------------- Tool Node ----------------
+    tool_node = ToolNode([get_schema])
 
-    analyst_graph.add_node("analyst", analyst)
-    analyst_graph.add_node("tools", ToolNode([get_schema]))
+    def tool_wrapper(state: AnalystState):
+        result = tool_node.invoke(state)
+        return {
+            "messages": result["messages"],
+            "tool_calls": state.get("tool_calls", 0) + 1
+        }
 
-    analyst_graph.add_edge(START, "analyst")
-    analyst_graph.add_conditional_edges("analyst", tools_condition)
-    analyst_graph.add_edge("tools", "analyst")
+    # ---------------- Graph ----------------
+    graph = StateGraph(AnalystState)
 
-    return analyst_graph.compile()
+    graph.add_node("analyst", analyst)
+    graph.add_node("tools", tool_wrapper)
+
+    graph.add_edge(START, "analyst")
+    graph.add_conditional_edges("analyst", tools_condition)
+    graph.add_edge("tools", "analyst")
+
+    graph.set_finish_point("analyst")
+
+    return graph.compile()
