@@ -4,12 +4,16 @@ from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain.tools import tool
+from langchain_openai import ChatOpenAI
 from fpdf import FPDF
 
-# FIXED IMPORTS
+# Correct tool imports
 from tools.get_schema import get_schema
 from tools.execute_sql import execute_sql
-from config.llm import llm
+
+
+# Create LLM directly (instead of importing from config)
+llm = ChatOpenAI(model="gpt-5-nano")
 
 
 # ---------------- PDF TOOL ----------------
