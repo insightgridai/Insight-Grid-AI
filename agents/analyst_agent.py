@@ -1,21 +1,22 @@
 from typing import Annotated, TypedDict
 
-from langgraph.graph import StateGraph, END, START
+from langgraph.graph import StateGraph, START
 from langgraph.graph.message import AnyMessage, add_messages
-from langgraph.prebuilt import ToolNode, create_react_agent, tools_condition
-from langchain_core.messages import SystemMessage, HumanMessage
+from langgraph.prebuilt import ToolNode, tools_condition
+from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 
-from tools.execute_sql import execute_sql
 from tools.get_schema import get_schema
 from agents.expert_agent import get_expert_app
 
 
-# ---------------- Analyst Agent ----------------
+# ---------------- Analyst State ----------------
 
 class AnalystState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
+
+# ---------------- Analyst App ----------------
 
 def get_analyst_app():
     """
@@ -29,24 +30,60 @@ def get_analyst_app():
     analyst_system_message = [
         SystemMessage(
             content=(
-               "You are a data analyst. Start by understanding the database schema "
-                "using tools. Then ask at least only one insightful questions in a single "
-                "response that will help in creating a comprehensive report."
+                "You are a data analyst. First inspect the database schema. "
+                "Then forward the analytical request to the expert agent "
+                "to generate SQL queries and retrieve results."
             )
         )
     ]
 
-    def analyst(state: AnalystState) -> AnalystState:
-        response = analyst_llm.invoke(analyst_system_message + state["messages"])
+    # ---------------- Analyst Node ----------------
+
+    def analyst(state: AnalystState):
+
+        response = analyst_llm.invoke(
+            analyst_system_message + state["messages"]
+        )
+
         return {"messages": [response]}
+
+
+    # ---------------- Expert Node ----------------
+
+    def call_expert(state: AnalystState):
+
+        expert_app = get_expert_app()
+
+        result = expert_app.invoke({
+            "messages": state["messages"]
+        })
+
+        return result
+
+
+    # ---------------- Graph ----------------
 
     analyst_graph = StateGraph(AnalystState)
 
     analyst_graph.add_node("analyst", analyst)
-    analyst_graph.add_node("tools", ToolNode([get_schema]))
+
+    analyst_graph.add_node(
+        "tools",
+        ToolNode([get_schema])
+    )
+
+    analyst_graph.add_node("expert", call_expert)
 
     analyst_graph.add_edge(START, "analyst")
-    analyst_graph.add_conditional_edges("analyst", tools_condition)
+
+    analyst_graph.add_conditional_edges(
+        "analyst",
+        tools_condition
+    )
+
     analyst_graph.add_edge("tools", "analyst")
+
+    # After schema understanding → send to expert
+    analyst_graph.add_edge("analyst", "expert")
 
     return analyst_graph.compile()
