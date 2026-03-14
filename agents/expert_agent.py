@@ -4,14 +4,16 @@ from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain.tools import tool
-
-from tools.sql_tools import get_schema, execute_sql
-from config.llm import llm
-
 from fpdf import FPDF
 
+# FIXED IMPORTS
+from tools.get_schema import get_schema
+from tools.execute_sql import execute_sql
+from config.llm import llm
 
-# PDF TOOL
+
+# ---------------- PDF TOOL ----------------
+
 @tool
 def generate_pdf_report(text: str, filename: str = "analysis_report.pdf") -> str:
     """Generate a PDF report from text"""
@@ -33,7 +35,8 @@ def generate_pdf_report(text: str, filename: str = "analysis_report.pdf") -> str
         return f"PDF generation failed: {str(e)}"
 
 
-# Bind tools to LLM
+# ---------------- LLM WITH TOOLS ----------------
+
 expert_llm = llm.bind_tools([
     get_schema,
     execute_sql,
@@ -41,7 +44,8 @@ expert_llm = llm.bind_tools([
 ])
 
 
-# System message
+# ---------------- SYSTEM MESSAGE ----------------
+
 expert_system_message = [
     SystemMessage(
         content="""
@@ -55,12 +59,14 @@ If report is requested generate a PDF.
 ]
 
 
-# State
+# ---------------- STATE ----------------
+
 class ExpertState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
 
-# Expert node
+# ---------------- EXPERT NODE ----------------
+
 def expert(state: ExpertState):
 
     response = expert_llm.invoke(
@@ -70,7 +76,8 @@ def expert(state: ExpertState):
     return {"messages": [response]}
 
 
-# Graph
+# ---------------- GRAPH ----------------
+
 expert_graph = StateGraph(ExpertState)
 
 expert_graph.add_node("expert", expert)
@@ -95,6 +102,8 @@ expert_graph.add_edge("tools", "expert")
 
 expert_app = expert_graph.compile()
 
+
+# ---------------- EXPORT ----------------
 
 def get_expert_app():
     return expert_app
