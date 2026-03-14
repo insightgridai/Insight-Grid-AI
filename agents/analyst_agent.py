@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 
 from tools.execute_sql import execute_sql
 from tools.get_schema import get_schema
+from agents.expert_agent import get_expert_app
 
 
 # ---------------- Analyst Agent ----------------
