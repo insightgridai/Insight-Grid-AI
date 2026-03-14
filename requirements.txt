@@ -3,3 +3,4 @@ streamlit
 langchain
 langchain-openai
 langgraph
+fpdf
