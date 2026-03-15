@@ -36,8 +36,6 @@ Focus on key insights such as:
 Avoid repeating tables or raw SQL results.
 
 Keep language simple, professional, and presentation ready.
-
-End the summary with two actionable insights.
 """
     )
 ]
