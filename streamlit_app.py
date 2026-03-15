@@ -137,14 +137,22 @@ if st.button("Run Analysis"):
 
                 st.success("Analysis completed")
 
-                response = result["messages"][-1].content
+                # -------------------------------------------------
+                # Extract FINAL meaningful AI response
+                # -------------------------------------------------
+                messages = result["messages"]
+                response = ""
+
+                for msg in reversed(messages):
+                    if msg.type == "ai" and "Routing to" not in msg.content:
+                        response = msg.content
+                        break
 
                 st.write(response)
 
-
-                # =====================================================
-                # GENERATE PDF FROM RESPONSE
-                # =====================================================
+                # -------------------------------------------------
+                # GENERATE PDF FROM FINAL RESPONSE
+                # -------------------------------------------------
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", size=12)
