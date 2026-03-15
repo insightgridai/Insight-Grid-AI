@@ -1,28 +1,23 @@
 from typing import TypedDict, Annotated
 
-from langgraph.graph import StateGraph, START
+from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import AnyMessage, add_messages
-from langgraph.prebuilt import ToolNode, tools_condition
 
 from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 
-from tools.generate_pdf_report import generate_pdf_report
 
+# ---------------- LLM ----------------
 
-# LLM
 llm = ChatOpenAI(model="gpt-4o-mini")
 
 
-# Bind tool
-reviewer_llm = llm.bind_tools([generate_pdf_report])
+# ---------------- SYSTEM MESSAGE ----------------
 
-
-# System message
 reviewer_system_message = [
     SystemMessage(
         content="""
-You are an expert reviewer tasked with summarizing detailed database analysis reports.
+You are an expert reviewer tasked with summarizing detailed database analysis results.
 
 Your goal is to produce a concise summary in exactly eight lines.
 
@@ -41,42 +36,36 @@ Keep language simple, professional, and presentation ready.
 ]
 
 
-# State
+# ---------------- STATE ----------------
+
 class ReviewerState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
 
-# Reviewer node
+# ---------------- REVIEWER NODE ----------------
+
 def reviewer(state: ReviewerState):
 
-    response = reviewer_llm.invoke(
+    response = llm.invoke(
         reviewer_system_message + state["messages"]
     )
 
     return {"messages": [response]}
 
 
-# Graph
+# ---------------- GRAPH ----------------
+
 reviewer_graph = StateGraph(ReviewerState)
 
 reviewer_graph.add_node("reviewer", reviewer)
 
-reviewer_graph.add_node(
-    "tools",
-    ToolNode([generate_pdf_report])
-)
-
 reviewer_graph.add_edge(START, "reviewer")
-
-reviewer_graph.add_conditional_edges(
-    "reviewer",
-    tools_condition
-)
-
-reviewer_graph.add_edge("tools", "reviewer")
+reviewer_graph.add_edge("reviewer", END)
 
 reviewer_app = reviewer_graph.compile()
 
+
+# ---------------- EXPORT ----------------
 
 def get_reviewer_app():
     return reviewer_app
