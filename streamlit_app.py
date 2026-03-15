@@ -124,6 +124,7 @@ if st.button("Run Analysis"):
         st.warning("Please enter a question.")
 
     else:
+
         with st.spinner("Running Auditor Agent..."):
 
             try:
@@ -144,22 +145,25 @@ if st.button("Run Analysis"):
                 # =====================================================
                 # PDF DOWNLOAD SUPPORT
                 # =====================================================
-                # PDF detection
-if ".pdf" in response:
+                if ".pdf" in response:
 
-    import os
+                    file_path = response.split()[-1]
 
-    file_path = response.split()[-1]
+                    if os.path.exists(file_path):
 
-    if os.path.exists(file_path):
+                        with open(file_path, "rb") as f:
 
-        with open(file_path, "rb") as f:
-            st.download_button(
-                label="📄 Download User Analysis Report",
-                data=f,
-                file_name="user_analysis_report.pdf",
-                mime="application/pdf"
-            )
+                            st.download_button(
+                                label="📄 Download User Analysis Report",
+                                data=f,
+                                file_name="user_analysis_report.pdf",
+                                mime="application/pdf"
+                            )
 
-    else:
-        st.warning("PDF file not found.")
+                    else:
+                        st.warning("PDF file not found.")
+
+            except Exception as e:
+
+                st.error("Agent failed ❌")
+                st.exception(e)
