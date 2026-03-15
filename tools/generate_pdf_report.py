@@ -2,12 +2,13 @@ from langchain.tools import tool
 from fpdf import FPDF
 import os
 
-
 @tool
 def generate_pdf_report(text: str, filename: str = "analysis_report.pdf") -> str:
-    """Generate a PDF report"""
+    """
+    Generate a PDF report and return the file path
+    """
 
-    # ensure folder exists
+    # Create folder if not exists
     output_dir = "generated_reports"
     os.makedirs(output_dir, exist_ok=True)
 
