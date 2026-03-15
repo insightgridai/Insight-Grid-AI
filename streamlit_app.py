@@ -144,24 +144,22 @@ if st.button("Run Analysis"):
                 # =====================================================
                 # PDF DOWNLOAD SUPPORT
                 # =====================================================
-                if ".pdf" in response:
+                # PDF detection
+if ".pdf" in response:
 
-                    file_path = response.split()[-1]
+    import os
 
-                    if os.path.exists(file_path):
+    file_path = response.split()[-1]
 
-                        with open(file_path, "rb") as f:
+    if os.path.exists(file_path):
 
-                            st.download_button(
-                                label="📄 Download PDF Report",
-                                data=f,
-                                file_name="analysis_report.pdf",
-                                mime="application/pdf"
-                            )
+        with open(file_path, "rb") as f:
+            st.download_button(
+                label="📄 Download User Analysis Report",
+                data=f,
+                file_name="user_analysis_report.pdf",
+                mime="application/pdf"
+            )
 
-                    else:
-                        st.warning("PDF file not found.")
-
-            except Exception as e:
-                st.error("Agent failed ❌")
-                st.exception(e)
+    else:
+        st.warning("PDF file not found.")
