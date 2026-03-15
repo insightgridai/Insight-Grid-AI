@@ -1,12 +1,11 @@
 import streamlit as st
 import base64
-import os
 from fpdf import FPDF
-import io
 
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
 from agents.supervisor_agent import get_supervisor_app
+
 
 # =====================================================
 # PAGE CONFIG
@@ -105,7 +104,7 @@ st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
 
 
 # =====================================================
-# AUDITOR AGENT
+# DATA ENGINE
 # =====================================================
 st.title("📊 Data Engine")
 st.caption("Ask analytical questions based on the connected database")
@@ -126,13 +125,13 @@ if st.button("Run Analysis"):
 
     else:
 
-        with st.spinner("Running Auditor Agent..."):
+        with st.spinner("Running Multi-Agent System..."):
 
             try:
 
-                analyst_app = get_analyst_app()
+                supervisor_app = get_supervisor_app()
 
-                result = analyst_app.invoke({
+                result = supervisor_app.invoke({
                     "messages": [HumanMessage(content=user_query)]
                 })
 
@@ -146,7 +145,6 @@ if st.button("Run Analysis"):
                 # =====================================================
                 # GENERATE PDF FROM RESPONSE
                 # =====================================================
-
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", size=12)
