@@ -6,8 +6,7 @@ import io
 
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
-from agents.analyst_agent import get_analyst_app
-
+from agents.supervisor_agent import get_supervisor_app
 
 # =====================================================
 # PAGE CONFIG
