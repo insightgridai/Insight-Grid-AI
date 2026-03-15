@@ -1,23 +1,21 @@
 from typing import Annotated, TypedDict, Literal
 
-from langchain_core.messages import AnyMessage, AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AnyMessage, SystemMessage
 from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
-# Import existing agents
 from agents.analyst_agent import get_analyst_app
 from agents.expert_agent import get_expert_app
 from agents.reviewer_agent import get_reviewer_app
 
 
 # ----------------------------------------------------
-# Supervisor Decision Schema
+# Decision Schema
 # ----------------------------------------------------
-class AgentSelector(BaseModel):
-    """Supervisor chooses next agent"""
 
+class AgentSelector(BaseModel):
     next_node: Literal["analyst", "expert", "reviewer", "END"] = Field(
         description="Choose which agent should run next"
     )
@@ -26,6 +24,7 @@ class AgentSelector(BaseModel):
 # ----------------------------------------------------
 # LLM
 # ----------------------------------------------------
+
 llm = ChatOpenAI(model="gpt-4o-mini")
 
 agent_selector_llm = llm.with_structured_output(AgentSelector)
@@ -34,25 +33,22 @@ agent_selector_llm = llm.with_structured_output(AgentSelector)
 # ----------------------------------------------------
 # System Prompt
 # ----------------------------------------------------
+
 supervisor_system_message = [
     SystemMessage(
         content="""
-You are a supervisor agent coordinating three agents:
+You are a supervisor coordinating three agents:
 
-1. analyst → explores schema and asks questions
-2. expert → answers questions using SQL
-3. reviewer → summarizes the analysis
+1. analyst → understands the question
+2. expert → runs SQL queries
+3. reviewer → summarizes results
 
-Rules:
-- First send task to analyst
-- Then expert
-- Then reviewer
-- Finally END
+Execution order must be:
 
-You must route through each agent at least once.
+analyst → expert → reviewer → END
 
-You do NOT perform the task yourself.
-You only decide which agent should run next.
+You only decide routing.
+Never generate analysis yourself.
 """
     )
 ]
@@ -61,6 +57,7 @@ You only decide which agent should run next.
 # ----------------------------------------------------
 # State
 # ----------------------------------------------------
+
 class SupervisorState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     next_node: Literal["analyst", "expert", "reviewer", "END"]
@@ -69,59 +66,51 @@ class SupervisorState(TypedDict):
 # ----------------------------------------------------
 # Supervisor Node
 # ----------------------------------------------------
+
 def supervisor(state: SupervisorState):
 
     response = agent_selector_llm.invoke(
         supervisor_system_message + state["messages"]
     )
 
-    return {
-        "messages": [
-            AIMessage(content=f"Routing to: {response.next_node}")
-        ],
-        "next_node": response.next_node
-    }
+    return {"next_node": response.next_node}
 
 
 # ----------------------------------------------------
 # Agent Wrappers
 # ----------------------------------------------------
+
 def call_analyst(state: SupervisorState):
 
     analyst_app = get_analyst_app()
 
-    result = analyst_app.invoke({
+    return analyst_app.invoke({
         "messages": state["messages"]
     })
-
-    return result
 
 
 def call_expert(state: SupervisorState):
 
     expert_app = get_expert_app()
 
-    result = expert_app.invoke({
+    return expert_app.invoke({
         "messages": state["messages"]
     })
-
-    return result
 
 
 def call_reviewer(state: SupervisorState):
 
     reviewer_app = get_reviewer_app()
 
-    result = reviewer_app.invoke({
+    return reviewer_app.invoke({
         "messages": state["messages"]
     })
 
-    return result
-
 
 # ----------------------------------------------------
-# Routing Logic
+# Routing
 # ----------------------------------------------------
+
 def route_from_supervisor(
     state: SupervisorState
 ) -> Literal["analyst", "expert", "reviewer", "__end__"]:
@@ -137,6 +126,7 @@ def route_from_supervisor(
 # ----------------------------------------------------
 # Graph
 # ----------------------------------------------------
+
 graph = StateGraph(SupervisorState)
 
 graph.add_node("supervisor", supervisor)
@@ -162,5 +152,6 @@ supervisor_app = graph.compile()
 # ----------------------------------------------------
 # Export
 # ----------------------------------------------------
+
 def get_supervisor_app():
     return supervisor_app
