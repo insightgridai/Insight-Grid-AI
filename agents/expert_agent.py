@@ -1,19 +1,24 @@
 from typing import TypedDict, Annotated
+
 from langchain_core.messages import AnyMessage, SystemMessage
 from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
+
 from langchain.tools import tool
 from langchain_openai import ChatOpenAI
+
 from fpdf import FPDF
 
-# Correct tool imports
+# SQL tools
 from tools.get_schema import get_schema
 from tools.execute_sql import execute_sql
 
 
-# Create LLM directly (instead of importing from config)
-llm = ChatOpenAI(model="gpt-5-nano")
+# ---------------- LLM ----------------
+
+# IMPORTANT: use gpt-4o-mini (stable for tools)
+llm = ChatOpenAI(model="gpt-4o-mini")
 
 
 # ---------------- PDF TOOL ----------------
@@ -22,21 +27,17 @@ llm = ChatOpenAI(model="gpt-5-nano")
 def generate_pdf_report(text: str, filename: str = "analysis_report.pdf") -> str:
     """Generate a PDF report from text"""
 
-    try:
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
 
-        for line in text.split("\n"):
-            pdf.multi_cell(0, 10, line)
+    for line in text.split("\n"):
+        pdf.multi_cell(0, 10, line)
 
-        file_path = f"/tmp/{filename}"
-        pdf.output(file_path)
+    path = f"/tmp/{filename}"
+    pdf.output(path)
 
-        return file_path
-
-    except Exception as e:
-        return f"PDF generation failed: {str(e)}"
+    return path
 
 
 # ---------------- LLM WITH TOOLS ----------------
@@ -55,9 +56,15 @@ expert_system_message = [
         content="""
 You are a senior data expert.
 
-Use SQL tools to answer analyst questions.
-Return raw results from database queries.
-If report is requested generate a PDF.
+Your job is to answer analytical questions using the database.
+
+Steps:
+1. Understand the question.
+2. Use the schema tool to inspect database structure if needed.
+3. Generate SQL queries using the execute_sql tool.
+4. Return the results clearly.
+
+If the user asks for a report, generate a PDF.
 """
     )
 ]
