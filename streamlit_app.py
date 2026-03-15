@@ -1,7 +1,8 @@
 import streamlit as st
 import base64
 import os
-import re
+from fpdf import FPDF
+import io
 
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
@@ -144,29 +145,24 @@ if st.button("Run Analysis"):
 
 
                 # =====================================================
-                # PDF DOWNLOAD SUPPORT
+                # GENERATE PDF FROM RESPONSE
                 # =====================================================
 
-                # Extract PDF path using regex
-                match = re.search(r"([\w\-/]+\.pdf)", response)
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", size=12)
 
-                if match:
+                for line in response.split("\n"):
+                    pdf.multi_cell(0, 10, line)
 
-                    file_path = match.group(1)
+                pdf_bytes = pdf.output(dest="S").encode("latin-1")
 
-                    if os.path.exists(file_path):
-
-                        with open(file_path, "rb") as f:
-
-                            st.download_button(
-                                label="📄 Download Database Analysis Report",
-                                data=f,
-                                file_name=os.path.basename(file_path),
-                                mime="application/pdf"
-                            )
-
-                    else:
-                        st.warning(f"PDF file not found at: {file_path}")
+                st.download_button(
+                    label="📄 Download Database Analysis Report",
+                    data=pdf_bytes,
+                    file_name="database_analysis_report.pdf",
+                    mime="application/pdf"
+                )
 
             except Exception as e:
 
