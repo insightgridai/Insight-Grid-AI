@@ -1,8 +1,11 @@
 import streamlit as st
 import base64
+import os
+
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
 from agents.analyst_agent import get_analyst_app
+
 
 # =====================================================
 # PAGE CONFIG
@@ -12,8 +15,9 @@ st.set_page_config(
     layout="wide"
 )
 
+
 # =====================================================
-# 🔒 HIDE STREAMLIT TOP BAR & FOOTER (ADD HERE)
+# HIDE STREAMLIT TOP BAR
 # =====================================================
 if st.session_state.get("role") != "admin":
     st.markdown(
@@ -35,6 +39,7 @@ def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
+
 bg_image = get_base64_image("assets/backgroud6.jfif")
 
 st.markdown(
@@ -52,7 +57,6 @@ st.markdown(
         background-attachment: fixed;
     }}
 
-    /* Force buttons to stay on one line */
     div.stButton > button {{
         white-space: nowrap;
         padding: 0.6rem 1.1rem;
@@ -62,10 +66,10 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+
 # =====================================================
-# HEADER (LEFT + RIGHT)
+# HEADER
 # =====================================================
-# ⬇️ Right column widened to avoid text wrapping
 header_left, header_right = st.columns([7, 2])
 
 with header_left:
@@ -80,7 +84,6 @@ with header_left:
     )
 
 with header_right:
-    st.markdown("<div style='display:flex; justify-content:flex-end;'>", unsafe_allow_html=True)
 
     if st.button("🔌 Test DB Connection"):
         try:
@@ -90,14 +93,15 @@ with header_right:
             cur.fetchone()
             cur.close()
             conn.close()
+
             st.success("Connection Successful ✅")
+
         except Exception as e:
             st.error("Connection Failed ❌")
             st.exception(e)
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
 st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
+
 
 # =====================================================
 # AUDITOR AGENT
@@ -110,18 +114,54 @@ user_query = st.text_area(
     placeholder="e.g. Give me total number of users"
 )
 
+
+# =====================================================
+# RUN ANALYSIS
+# =====================================================
 if st.button("Run Analysis"):
+
     if not user_query.strip():
         st.warning("Please enter a question.")
+
     else:
         with st.spinner("Running Auditor Agent..."):
+
             try:
+
                 analyst_app = get_analyst_app()
+
                 result = analyst_app.invoke({
                     "messages": [HumanMessage(content=user_query)]
                 })
+
                 st.success("Analysis completed")
-                st.write(result["messages"][-1].content)
+
+                response = result["messages"][-1].content
+
+                st.write(response)
+
+
+                # =====================================================
+                # PDF DOWNLOAD SUPPORT
+                # =====================================================
+                if ".pdf" in response:
+
+                    file_path = response.split()[-1]
+
+                    if os.path.exists(file_path):
+
+                        with open(file_path, "rb") as f:
+
+                            st.download_button(
+                                label="📄 Download PDF Report",
+                                data=f,
+                                file_name="analysis_report.pdf",
+                                mime="application/pdf"
+                            )
+
+                    else:
+                        st.warning("PDF file not found.")
+
             except Exception as e:
                 st.error("Agent failed ❌")
                 st.exception(e)
