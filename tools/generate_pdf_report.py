@@ -1,10 +1,17 @@
 from langchain.tools import tool
 from fpdf import FPDF
+import os
 
 
 @tool
 def generate_pdf_report(text: str, filename: str = "analysis_report.pdf") -> str:
-    """Generate a PDF report from text"""
+    """Generate a PDF report"""
+
+    # ensure folder exists
+    output_dir = "generated_reports"
+    os.makedirs(output_dir, exist_ok=True)
+
+    file_path = os.path.join(output_dir, filename)
 
     pdf = FPDF()
     pdf.add_page()
@@ -13,7 +20,6 @@ def generate_pdf_report(text: str, filename: str = "analysis_report.pdf") -> str
     for line in text.split("\n"):
         pdf.multi_cell(0, 10, line)
 
-    path = f"/tmp/{filename}"
-    pdf.output(path)
+    pdf.output(file_path)
 
-    return path
+    return file_path
