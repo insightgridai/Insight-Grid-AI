@@ -108,7 +108,7 @@ st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
 # =====================================================
 # AUDITOR AGENT
 # =====================================================
-st.title("📊 Auditor Agent")
+st.title("📊 Data Engine")
 st.caption("Ask analytical questions based on the connected database")
 
 user_query = st.text_area(
