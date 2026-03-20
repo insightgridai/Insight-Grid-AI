@@ -12,7 +12,7 @@ class AnalystState(TypedDict):
 
 def get_analyst_app():
 
-    llm = ChatOpenAI(model="gpt-4o-mini")
+    llm = ChatOpenAI(model="gpt-5-nano")
 
     analyst_system_message = [
         SystemMessage(
