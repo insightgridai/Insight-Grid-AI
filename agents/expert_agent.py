@@ -14,7 +14,7 @@ from tools.execute_sql import execute_sql
 
 # ---------------- LLM ----------------
 
-llm = ChatOpenAI(model="gpt-4o-mini")
+llm = ChatOpenAI(model="gpt-5-nano")
 
 
 # ---------------- LLM WITH TOOLS ----------------
