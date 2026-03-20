@@ -7,9 +7,9 @@ from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 
 
-# ---------------- LLM ----------------
-
-llm = ChatOpenAI(model="gpt-4o-mini")
+# ---------------- LLM (CHEAP MODEL) ----------------
+# Use nano → very low cost
+llm = ChatOpenAI(model="gpt-5-nano")
 
 
 # ---------------- SYSTEM MESSAGE ----------------
@@ -17,20 +17,20 @@ llm = ChatOpenAI(model="gpt-4o-mini")
 reviewer_system_message = [
     SystemMessage(
         content="""
-You are an expert reviewer tasked with summarizing detailed database analysis results.
+You are a data reviewer.
 
-Your goal is to produce a concise summary in exactly eight lines.
+Your task is to summarize structured data results.
 
-Focus on key insights such as:
-- user counts
-- growth
-- order statistics
-- top performers
-- important trends
+Rules:
+- Keep summary very short (3-4 lines max)
+- Focus only on key insights
+- No repetition
+- No technical details
+- No JSON
+- No SQL
+- No file paths or links
 
-Avoid repeating tables or raw SQL results.
-
-Keep language simple, professional, and presentation ready.
+Output only plain text.
 """
     )
 ]
