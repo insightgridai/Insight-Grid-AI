@@ -25,7 +25,7 @@ class AgentSelector(BaseModel):
 # LLM
 # ----------------------------------------------------
 
-llm = ChatOpenAI(model="gpt-4o-mini")
+llm = ChatOpenAI(model="gpt-5-nano")
 
 agent_selector_llm = llm.with_structured_output(AgentSelector)
 
