@@ -42,6 +42,11 @@ st.markdown(
     div.stButton > button {{
         white-space: nowrap;
     }}
+
+    textarea {{
+        background-color: rgba(0,0,0,0.6) !important;
+        color: white !important;
+    }}
     </style>
     """,
     unsafe_allow_html=True
@@ -53,7 +58,6 @@ st.markdown(
 # =====================================================
 col1, col2 = st.columns([6, 2])
 
-# LEFT → TITLE
 with col1:
     st.markdown(
         """
@@ -65,7 +69,6 @@ with col1:
         unsafe_allow_html=True
     )
 
-# RIGHT → DB BUTTON
 with col2:
     st.markdown("<div style='display:flex; justify-content:flex-end;'>", unsafe_allow_html=True)
 
@@ -90,12 +93,12 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# DATA ENGINE (CENTERED TITLE)
+# AUDITOR AGENT (LEFT ALIGNED ✅)
 # =====================================================
 st.markdown(
     """
-    <h2 style="text-align:center;">📊 Auditor Agent</h2>
-    <p style="text-align:center; color:#9ca3af;">
+    <h2 style="margin-bottom:5px;">📊 Data Engine </h2>
+    <p style="color:#9ca3af;">
         Ask analytical questions based on your database
     </p>
     """,
@@ -104,17 +107,14 @@ st.markdown(
 
 
 # =====================================================
-# USER INPUT (CENTERED)
+# USER INPUT (FULL WIDTH LEFT ✅)
 # =====================================================
-col1, col2, col3 = st.columns([1,2,1])
+user_query = st.text_area(
+    "Enter your analysis question",
+    placeholder="e.g. Compare gas production Jan vs Feb 2025"
+)
 
-with col2:
-    user_query = st.text_area(
-        "Enter your analysis question",
-        placeholder="e.g. Compare gas production this month vs last year"
-    )
-
-    run_clicked = st.button("Run Analysis")
+run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
@@ -129,9 +129,11 @@ def auto_visualize(df):
 
     cols = df.columns
 
+    # KPI
     if len(cols) == 1:
         st.metric(cols[0], df.iloc[0, 0])
 
+    # 2 columns
     elif len(cols) == 2:
         col1, col2 = cols
 
@@ -140,6 +142,7 @@ def auto_visualize(df):
         else:
             st.bar_chart(df.set_index(col1))
 
+    # multiple columns
     else:
         st.line_chart(df)
 
@@ -205,7 +208,7 @@ if run_clicked:
                 st.write(response)
 
                 # -------------------------------------------------
-                # PDF
+                # PDF GENERATION
                 # -------------------------------------------------
                 pdf = FPDF()
                 pdf.add_page()
