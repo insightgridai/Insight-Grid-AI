@@ -72,7 +72,7 @@ def auto_visualize(df):
 
     cols = df.columns
 
-    # KPI (single value)
+    # KPI
     if len(cols) == 1:
         st.metric(cols[0], df.iloc[0, 0])
 
@@ -106,8 +106,10 @@ if st.button("Run Analysis"):
 
                 supervisor_app = get_supervisor_app()
 
+                # ✅ FIX 1: pass step=0
                 result = supervisor_app.invoke({
-                    "messages": [HumanMessage(content=user_query)]
+                    "messages": [HumanMessage(content=user_query)],
+                    "step": 0
                 })
 
                 st.success("Analysis completed")
@@ -124,32 +126,41 @@ if st.button("Run Analysis"):
                         break
 
                 # -------------------------------------------------
-                # Try parsing structured JSON
+                # SAFE JSON PARSING (FIX 2)
                 # -------------------------------------------------
+                data = None
+
                 try:
-                    data = json.loads(response)
+                    start = response.find("{")
+                    end = response.rfind("}") + 1
 
-                    if "columns" in data and "data" in data:
-
-                        df = pd.DataFrame(data["data"], columns=data["columns"])
-
-                        # ---------------- KPI SECTION ----------------
-                        if len(df.columns) == 1:
-                            st.metric(df.columns[0], df.iloc[0, 0])
-
-                        # ---------------- VISUALIZATION ----------------
-                        auto_visualize(df)
-
-                    else:
-                        st.write(response)
+                    json_str = response[start:end]
+                    data = json.loads(json_str)
 
                 except:
-                    # fallback → summary text
-                    st.subheader("🧠 Summary")
-                    st.write(response)
+                    data = None
 
                 # -------------------------------------------------
-                # PDF GENERATION (SUMMARY ONLY)
+                # VISUALIZATION
+                # -------------------------------------------------
+                if data and "columns" in data and "data" in data:
+
+                    df = pd.DataFrame(data["data"], columns=data["columns"])
+
+                    # KPI
+                    if len(df.columns) == 1:
+                        st.metric(df.columns[0], df.iloc[0, 0])
+
+                    auto_visualize(df)
+
+                # -------------------------------------------------
+                # ALWAYS SHOW SUMMARY (FIX 3)
+                # -------------------------------------------------
+                st.subheader("🧠 Summary")
+                st.write(response)
+
+                # -------------------------------------------------
+                # PDF GENERATION
                 # -------------------------------------------------
                 pdf = FPDF()
                 pdf.add_page()
