@@ -38,6 +38,10 @@ st.markdown(
         background-position: center;
         background-attachment: fixed;
     }}
+
+    div.stButton > button {{
+        white-space: nowrap;
+    }}
     </style>
     """,
     unsafe_allow_html=True
@@ -45,38 +49,27 @@ st.markdown(
 
 
 # =====================================================
-# HEADER (CENTERED)
+# HEADER (LEFT + RIGHT)
 # =====================================================
-st.markdown(
-    """
-    <h2 style="text-align:center;">👋 Hi User!</h2>
-    <p style="text-align:center; color:#9ca3af;">
-        Welcome to Insight Grid AI
-    </p>
-    """,
-    unsafe_allow_html=True
-)
+col1, col2 = st.columns([6, 2])
 
-st.markdown("<hr>", unsafe_allow_html=True)
+# LEFT → TITLE
+with col1:
+    st.markdown(
+        """
+        <h2 style="margin-bottom:5px;">🤖 Insight Grid AI</h2>
+        <p style="color:#9ca3af; font-size:14px;">
+            Where Data, Agents, and Decisions Connect
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
 
-
-# =====================================================
-# DATABASE CONNECTION (CENTERED)
-# =====================================================
-st.markdown(
-    """
-    <h3 style="text-align:center;">🔌 Database Connectivity Test</h3>
-    <p style="text-align:center; color:#9ca3af;">
-        Verify your database connection
-    </p>
-    """,
-    unsafe_allow_html=True
-)
-
-col1, col2, col3 = st.columns([1,2,1])
-
+# RIGHT → DB BUTTON
 with col2:
-    if st.button("Test Database Connection"):
+    st.markdown("<div style='display:flex; justify-content:flex-end;'>", unsafe_allow_html=True)
+
+    if st.button("🔌 Test DB Connection"):
         try:
             conn = get_db_connection()
             cur = conn.cursor()
@@ -91,15 +84,17 @@ with col2:
             st.error("Connection Failed ❌")
             st.exception(e)
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
 st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# AUDITOR AGENT
+# DATA ENGINE (CENTERED TITLE)
 # =====================================================
 st.markdown(
     """
-    <h2 style="text-align:center;">📊 Data Engine</h2>
+    <h2 style="text-align:center;">📊 Auditor Agent</h2>
     <p style="text-align:center; color:#9ca3af;">
         Ask analytical questions based on your database
     </p>
@@ -165,7 +160,6 @@ if run_clicked:
 
                 supervisor_app = get_supervisor_app()
 
-                # ✅ CRITICAL FIX
                 result = supervisor_app.invoke({
                     "messages": [HumanMessage(content=user_query)],
                     "step": 0
@@ -174,7 +168,7 @@ if run_clicked:
                 st.success("Analysis completed")
 
                 # -------------------------------------------------
-                # Extract final response
+                # Extract response
                 # -------------------------------------------------
                 messages = result["messages"]
                 response = ""
@@ -192,10 +186,8 @@ if run_clicked:
                 try:
                     start = response.find("{")
                     end = response.rfind("}") + 1
-
                     json_str = response[start:end]
                     data = json.loads(json_str)
-
                 except:
                     data = None
 
@@ -203,9 +195,7 @@ if run_clicked:
                 # VISUALIZATION
                 # -------------------------------------------------
                 if data and "columns" in data and "data" in data:
-
                     df = pd.DataFrame(data["data"], columns=data["columns"])
-
                     auto_visualize(df)
 
                 # -------------------------------------------------
@@ -215,7 +205,7 @@ if run_clicked:
                 st.write(response)
 
                 # -------------------------------------------------
-                # PDF GENERATION
+                # PDF
                 # -------------------------------------------------
                 pdf = FPDF()
                 pdf.add_page()
