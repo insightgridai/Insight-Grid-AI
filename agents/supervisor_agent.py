@@ -1,10 +1,8 @@
 from typing import Annotated, TypedDict, Literal
 
-from langchain_core.messages import AnyMessage, SystemMessage
+from langchain_core.messages import AnyMessage
 from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
-from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
 
 from agents.analyst_agent import get_analyst_app
 from agents.expert_agent import get_expert_app
@@ -12,119 +10,68 @@ from agents.reviewer_agent import get_reviewer_app
 
 
 # ----------------------------------------------------
-# Decision Schema
-# ----------------------------------------------------
-
-class AgentSelector(BaseModel):
-    next_node: Literal["analyst", "expert", "reviewer", "END"] = Field(
-        description="Choose which agent should run next"
-    )
-
-
-# ----------------------------------------------------
-# LLM
-# ----------------------------------------------------
-
-llm = ChatOpenAI(model="gpt-5-nano")
-
-agent_selector_llm = llm.with_structured_output(AgentSelector)
-
-
-# ----------------------------------------------------
-# System Prompt
-# ----------------------------------------------------
-
-supervisor_system_message = [
-    SystemMessage(
-        content="""
-You are a supervisor coordinating three agents:
-
-1. analyst → understands the question
-2. expert → runs SQL queries
-3. reviewer → summarizes results
-
-Execution order must be:
-
-analyst → expert → reviewer → END
-
-You only decide routing.
-Never generate analysis yourself.
-"""
-    )
-]
-
-
-# ----------------------------------------------------
-# State
+# STATE
 # ----------------------------------------------------
 
 class SupervisorState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
-    next_node: Literal["analyst", "expert", "reviewer", "END"]
+    step: int
 
 
 # ----------------------------------------------------
-# Supervisor Node
+# SUPERVISOR (NO LLM → ZERO COST)
 # ----------------------------------------------------
 
 def supervisor(state: SupervisorState):
 
-    response = agent_selector_llm.invoke(
-        supervisor_system_message + state["messages"]
-    )
+    step = state.get("step", 0)
 
-    return {"next_node": response.next_node}
+    # deterministic flow
+    if step == 0:
+        next_node = "analyst"
+    elif step == 1:
+        next_node = "expert"
+    elif step == 2:
+        next_node = "reviewer"
+    else:
+        next_node = "__end__"
+
+    return {
+        "step": step + 1,
+        "next_node": next_node
+    }
 
 
 # ----------------------------------------------------
-# Agent Wrappers
+# AGENT WRAPPERS
 # ----------------------------------------------------
 
 def call_analyst(state: SupervisorState):
-
     analyst_app = get_analyst_app()
-
-    return analyst_app.invoke({
-        "messages": state["messages"]
-    })
+    return analyst_app.invoke({"messages": state["messages"]})
 
 
 def call_expert(state: SupervisorState):
-
     expert_app = get_expert_app()
-
-    return expert_app.invoke({
-        "messages": state["messages"]
-    })
+    return expert_app.invoke({"messages": state["messages"]})
 
 
 def call_reviewer(state: SupervisorState):
-
     reviewer_app = get_reviewer_app()
-
-    return reviewer_app.invoke({
-        "messages": state["messages"]
-    })
+    return reviewer_app.invoke({"messages": state["messages"]})
 
 
 # ----------------------------------------------------
-# Routing
+# ROUTING
 # ----------------------------------------------------
 
-def route_from_supervisor(
-    state: SupervisorState
-) -> Literal["analyst", "expert", "reviewer", "__end__"]:
+def route_from_supervisor(state: SupervisorState):
 
-    next_node = state.get("next_node")
-
-    if next_node == "END":
-        return "__end__"
-
-    return next_node
+    return state["next_node"]
 
 
 # ----------------------------------------------------
-# Graph
+# GRAPH
 # ----------------------------------------------------
 
 graph = StateGraph(SupervisorState)
@@ -150,7 +97,7 @@ supervisor_app = graph.compile()
 
 
 # ----------------------------------------------------
-# Export
+# EXPORT
 # ----------------------------------------------------
 
 def get_supervisor_app():
