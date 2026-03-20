@@ -32,7 +32,7 @@ st.markdown(
     f"""
     <style>
     .stApp {{
-        background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)),
+        background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
         url("data:image/png;base64,{bg_image}");
         background-size: cover;
         background-position: center;
@@ -45,19 +45,81 @@ st.markdown(
 
 
 # =====================================================
-# HEADER
+# HEADER (CENTERED)
 # =====================================================
-st.title("📊 Data Engine")
-st.caption("Ask analytical questions based on your database")
-
-
-# =====================================================
-# USER INPUT
-# =====================================================
-user_query = st.text_area(
-    "Enter your analysis question",
-    placeholder="e.g. Compare gas production this month vs last year"
+st.markdown(
+    """
+    <h2 style="text-align:center;">👋 Hi User!</h2>
+    <p style="text-align:center; color:#9ca3af;">
+        Welcome to Insight Grid AI
+    </p>
+    """,
+    unsafe_allow_html=True
 )
+
+st.markdown("<hr>", unsafe_allow_html=True)
+
+
+# =====================================================
+# DATABASE CONNECTION (CENTERED)
+# =====================================================
+st.markdown(
+    """
+    <h3 style="text-align:center;">🔌 Database Connectivity Test</h3>
+    <p style="text-align:center; color:#9ca3af;">
+        Verify your database connection
+    </p>
+    """,
+    unsafe_allow_html=True
+)
+
+col1, col2, col3 = st.columns([1,2,1])
+
+with col2:
+    if st.button("Test Database Connection"):
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            cur.close()
+            conn.close()
+
+            st.success("Connection Successful ✅")
+
+        except Exception as e:
+            st.error("Connection Failed ❌")
+            st.exception(e)
+
+st.markdown("<hr>", unsafe_allow_html=True)
+
+
+# =====================================================
+# AUDITOR AGENT
+# =====================================================
+st.markdown(
+    """
+    <h2 style="text-align:center;">📊 Data Engine</h2>
+    <p style="text-align:center; color:#9ca3af;">
+        Ask analytical questions based on your database
+    </p>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# =====================================================
+# USER INPUT (CENTERED)
+# =====================================================
+col1, col2, col3 = st.columns([1,2,1])
+
+with col2:
+    user_query = st.text_area(
+        "Enter your analysis question",
+        placeholder="e.g. Compare gas production this month vs last year"
+    )
+
+    run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
@@ -72,11 +134,9 @@ def auto_visualize(df):
 
     cols = df.columns
 
-    # KPI
     if len(cols) == 1:
         st.metric(cols[0], df.iloc[0, 0])
 
-    # 2 columns
     elif len(cols) == 2:
         col1, col2 = cols
 
@@ -85,7 +145,6 @@ def auto_visualize(df):
         else:
             st.bar_chart(df.set_index(col1))
 
-    # multiple columns
     else:
         st.line_chart(df)
 
@@ -93,7 +152,7 @@ def auto_visualize(df):
 # =====================================================
 # RUN ANALYSIS
 # =====================================================
-if st.button("Run Analysis"):
+if run_clicked:
 
     if not user_query.strip():
         st.warning("Please enter a question.")
@@ -106,7 +165,7 @@ if st.button("Run Analysis"):
 
                 supervisor_app = get_supervisor_app()
 
-                # ✅ FIX 1: pass step=0
+                # ✅ CRITICAL FIX
                 result = supervisor_app.invoke({
                     "messages": [HumanMessage(content=user_query)],
                     "step": 0
@@ -115,7 +174,7 @@ if st.button("Run Analysis"):
                 st.success("Analysis completed")
 
                 # -------------------------------------------------
-                # Extract last AI response
+                # Extract final response
                 # -------------------------------------------------
                 messages = result["messages"]
                 response = ""
@@ -126,7 +185,7 @@ if st.button("Run Analysis"):
                         break
 
                 # -------------------------------------------------
-                # SAFE JSON PARSING (FIX 2)
+                # SAFE JSON PARSING
                 # -------------------------------------------------
                 data = None
 
@@ -147,14 +206,10 @@ if st.button("Run Analysis"):
 
                     df = pd.DataFrame(data["data"], columns=data["columns"])
 
-                    # KPI
-                    if len(df.columns) == 1:
-                        st.metric(df.columns[0], df.iloc[0, 0])
-
                     auto_visualize(df)
 
                 # -------------------------------------------------
-                # ALWAYS SHOW SUMMARY (FIX 3)
+                # SUMMARY
                 # -------------------------------------------------
                 st.subheader("🧠 Summary")
                 st.write(response)
