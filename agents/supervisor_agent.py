@@ -10,23 +10,23 @@ from agents.reviewer_agent import get_reviewer_app
 
 
 # ----------------------------------------------------
-# STATE
+# STATE (FIXED)
 # ----------------------------------------------------
 
 class SupervisorState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     step: int
+    next_node: str   # ✅ ADD THIS
 
 
 # ----------------------------------------------------
-# SUPERVISOR (NO LLM → ZERO COST)
+# SUPERVISOR (FIXED)
 # ----------------------------------------------------
 
 def supervisor(state: SupervisorState):
 
     step = state.get("step", 0)
 
-    # deterministic flow
     if step == 0:
         next_node = "analyst"
     elif step == 1:
@@ -37,13 +37,14 @@ def supervisor(state: SupervisorState):
         next_node = "__end__"
 
     return {
+        "messages": state["messages"],   # ✅ KEEP MESSAGES
         "step": step + 1,
         "next_node": next_node
     }
 
 
 # ----------------------------------------------------
-# AGENT WRAPPERS
+# AGENT WRAPPERS (NO CHANGE)
 # ----------------------------------------------------
 
 def call_analyst(state: SupervisorState):
@@ -62,12 +63,11 @@ def call_reviewer(state: SupervisorState):
 
 
 # ----------------------------------------------------
-# ROUTING
+# ROUTING (SAFE)
 # ----------------------------------------------------
 
 def route_from_supervisor(state: SupervisorState):
-
-    return state["next_node"]
+    return state.get("next_node", "__end__")   # ✅ SAFE
 
 
 # ----------------------------------------------------
@@ -91,7 +91,6 @@ graph.add_conditional_edges(
 graph.add_edge("analyst", "supervisor")
 graph.add_edge("expert", "supervisor")
 graph.add_edge("reviewer", "supervisor")
-
 
 supervisor_app = graph.compile()
 
