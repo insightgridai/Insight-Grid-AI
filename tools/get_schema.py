@@ -1,30 +1,47 @@
 from langchain.tools import tool
 from db.connection import get_db_connection
 
+
 @tool
-def get_schema(sample_query: str = "SELECT * FROM users LIMIT 1") -> str:
+def get_schema(table_name: str = None) -> str:
     """
-    Returns column names and types inferred from a sample query.
-    Works across all DB-API databases.
+    Returns schema (column names + data types).
+    If table_name is provided → returns schema of that table
+    Else → returns list of tables
     """
+
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        cur.execute(sample_query)
+        # If no table → list tables
+        if not table_name:
+            cur.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema='public';"
+            )
+            tables = [row[0] for row in cur.fetchall()]
+
+            cur.close()
+            conn.close()
+
+            return f"Available tables: {', '.join(tables)}"
+
+        # Get schema for specific table
+        cur.execute(f"SELECT * FROM {table_name} LIMIT 1")
 
         if cur.description is None:
-            return "No schema available for this query."
+            return f"No schema found for table {table_name}"
 
         schema = []
         for col in cur.description:
-            # col[0] = column name, col[1] = type code
-            schema.append(f"{col[0]}")
+            col_name = col[0]
+            col_type = str(col[1])
+            schema.append(f"{col_name} ({col_type})")
 
         cur.close()
         conn.close()
 
-        return "Columns: " + ", ".join(schema)
+        return f"Schema for {table_name}: " + ", ".join(schema)
 
     except Exception as e:
         return f"Error: {str(e)}"
