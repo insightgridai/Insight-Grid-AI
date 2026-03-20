@@ -1,5 +1,7 @@
 import streamlit as st
 import base64
+import json
+import pandas as pd
 from fpdf import FPDF
 
 from db.connection import get_db_connection
@@ -17,22 +19,6 @@ st.set_page_config(
 
 
 # =====================================================
-# HIDE STREAMLIT TOP BAR
-# =====================================================
-if st.session_state.get("role") != "admin":
-    st.markdown(
-        """
-        <style>
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
-        [data-testid="stToolbar"] {display: none;}
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-# =====================================================
 # BACKGROUND IMAGE
 # =====================================================
 def get_base64_image(image_path):
@@ -46,20 +32,11 @@ st.markdown(
     f"""
     <style>
     .stApp {{
-        background: linear-gradient(
-            rgba(0,0,0,0.55),
-            rgba(0,0,0,0.55)
-        ),
+        background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)),
         url("data:image/png;base64,{bg_image}");
         background-size: cover;
         background-position: center;
-        background-repeat: no-repeat;
         background-attachment: fixed;
-    }}
-
-    div.stButton > button {{
-        white-space: nowrap;
-        padding: 0.6rem 1.1rem;
     }}
     </style>
     """,
@@ -70,49 +47,47 @@ st.markdown(
 # =====================================================
 # HEADER
 # =====================================================
-header_left, header_right = st.columns([7, 2])
-
-with header_left:
-    st.markdown(
-        """
-        <h3 style="margin-bottom:4px;">👩‍💻 Insight Grid AI</h3>
-        <p style="margin-top:0; color:#9ca3af; font-size:14px;">
-            Where Data, Agents, and Decisions Connect
-        </p>
-        """,
-        unsafe_allow_html=True
-    )
-
-with header_right:
-
-    if st.button("🔌 Test DB Connection"):
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.fetchone()
-            cur.close()
-            conn.close()
-
-            st.success("Connection Successful ✅")
-
-        except Exception as e:
-            st.error("Connection Failed ❌")
-            st.exception(e)
-
-st.markdown("<hr style='margin: 8px 0 24px 0;'>", unsafe_allow_html=True)
-
-
-# =====================================================
-# DATA ENGINE
-# =====================================================
 st.title("📊 Data Engine")
-st.caption("Ask analytical questions based on the connected database")
+st.caption("Ask analytical questions based on your database")
 
+
+# =====================================================
+# USER INPUT
+# =====================================================
 user_query = st.text_area(
     "Enter your analysis question",
-    placeholder="e.g. Give me total number of users"
+    placeholder="e.g. Compare gas production this month vs last year"
 )
+
+
+# =====================================================
+# AUTO VISUALIZATION ENGINE
+# =====================================================
+def auto_visualize(df):
+
+    st.subheader("📊 Data Preview")
+    st.dataframe(df)
+
+    st.subheader("📈 Visualization")
+
+    cols = df.columns
+
+    # KPI (single value)
+    if len(cols) == 1:
+        st.metric(cols[0], df.iloc[0, 0])
+
+    # 2 columns
+    elif len(cols) == 2:
+        col1, col2 = cols
+
+        if "date" in col1.lower():
+            st.line_chart(df.set_index(col1))
+        else:
+            st.bar_chart(df.set_index(col1))
+
+    # multiple columns
+    else:
+        st.line_chart(df)
 
 
 # =====================================================
@@ -138,38 +113,75 @@ if st.button("Run Analysis"):
                 st.success("Analysis completed")
 
                 # -------------------------------------------------
-                # Extract FINAL meaningful AI response
+                # Extract last AI response
                 # -------------------------------------------------
                 messages = result["messages"]
                 response = ""
 
                 for msg in reversed(messages):
-                    if msg.type == "ai" and "Routing to" not in msg.content:
+                    if msg.type == "ai":
                         response = msg.content
                         break
 
-                st.write(response)
+                # -------------------------------------------------
+                # Try parsing structured JSON
+                # -------------------------------------------------
+                try:
+                    data = json.loads(response)
+
+                    if "columns" in data and "data" in data:
+
+                        df = pd.DataFrame(data["data"], columns=data["columns"])
+
+                        # ---------------- KPI SECTION ----------------
+                        if len(df.columns) == 1:
+                            st.metric(df.columns[0], df.iloc[0, 0])
+
+                        # ---------------- VISUALIZATION ----------------
+                        auto_visualize(df)
+
+                    else:
+                        st.write(response)
+
+                except:
+                    # fallback → summary text
+                    st.subheader("🧠 Summary")
+                    st.write(response)
 
                 # -------------------------------------------------
-                # GENERATE PDF FROM FINAL RESPONSE
+                # PDF GENERATION (SUMMARY ONLY)
                 # -------------------------------------------------
                 pdf = FPDF()
                 pdf.add_page()
-                pdf.set_font("Arial", size=12)
 
-                for line in response.split("\n"):
-                    pdf.multi_cell(0, 10, line)
+                pdf.set_font("Arial", "B", 14)
+                pdf.cell(0, 10, "Database Analysis Report", ln=True)
+
+                pdf.ln(5)
+
+                pdf.set_font("Arial", "B", 12)
+                pdf.cell(0, 8, "Query:", ln=True)
+
+                pdf.set_font("Arial", size=12)
+                pdf.multi_cell(0, 8, user_query)
+
+                pdf.ln(5)
+
+                pdf.set_font("Arial", "B", 12)
+                pdf.cell(0, 8, "Summary:", ln=True)
+
+                pdf.set_font("Arial", size=12)
+                pdf.multi_cell(0, 8, response)
 
                 pdf_bytes = pdf.output(dest="S").encode("latin-1")
 
                 st.download_button(
-                    label="📄 Download Database Analysis Report",
+                    label="📄 Download Report",
                     data=pdf_bytes,
-                    file_name="database_analysis_report.pdf",
+                    file_name="analysis_report.pdf",
                     mime="application/pdf"
                 )
 
             except Exception as e:
-
                 st.error("Agent failed ❌")
                 st.exception(e)
