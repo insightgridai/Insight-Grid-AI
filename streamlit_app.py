@@ -4,6 +4,7 @@ import json
 import pandas as pd
 from fpdf import FPDF
 import unicodedata
+import matplotlib.pyplot as plt
 
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
@@ -13,10 +14,7 @@ from agents.supervisor_agent import get_supervisor_app
 # =====================================================
 # PAGE CONFIG
 # =====================================================
-st.set_page_config(
-    page_title="Insight Grid AI",
-    layout="wide"
-)
+st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
@@ -29,29 +27,22 @@ def get_base64_image(image_path):
 
 bg_image = get_base64_image("assets/backgroud6.jfif")
 
-st.markdown(
-    f"""
-    <style>
-    .stApp {{
-        background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
-        url("data:image/png;base64,{bg_image}");
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
-    }}
+st.markdown(f"""
+<style>
+.stApp {{
+    background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
+    url("data:image/png;base64,{bg_image}");
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}}
 
-    div.stButton > button {{
-        white-space: nowrap;
-    }}
-
-    textarea {{
-        background-color: rgba(0,0,0,0.6) !important;
-        color: white !important;
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+textarea {{
+    background-color: rgba(0,0,0,0.6) !important;
+    color: white !important;
+}}
+</style>
+""", unsafe_allow_html=True)
 
 
 # =====================================================
@@ -60,15 +51,10 @@ st.markdown(
 col1, col2 = st.columns([6, 2])
 
 with col1:
-    st.markdown(
-        """
-        <h2 style="margin-bottom:5px;">🤖 Insight Grid AI</h2>
-        <p style="color:#9ca3af; font-size:14px;">
-            Where Data, Agents, and Decisions Connect
-        </p>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown("""
+    <h2>🤖 Insight Grid AI</h2>
+    <p style="color:#9ca3af;">Where Data, Agents, and Decisions Connect</p>
+    """, unsafe_allow_html=True)
 
 with col2:
     if st.button("🔌 Test DB Connection"):
@@ -88,51 +74,85 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# DATA ENGINE
+# INPUT
 # =====================================================
-st.markdown(
-    """
-    <h2 style="margin-bottom:5px;">📊 Data Engine</h2>
-    <p style="color:#9ca3af;">
-        Ask analytical questions based on your database
-    </p>
-    """,
-    unsafe_allow_html=True
-)
+st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
 
 user_query = st.text_area(
     "Enter your analysis question",
-    placeholder="e.g. Compare sales Jan vs Feb 2025"
+    placeholder="e.g. Show revenue by division as pie chart"
 )
 
 run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# AUTO VISUALIZATION
+# VISUALIZATION ENGINE
 # =====================================================
-def auto_visualize(df):
-
-    st.subheader("📊 Data Preview")
-    st.dataframe(df)
+def auto_visualize(df, user_query):
 
     st.subheader("📈 Visualization")
 
     cols = df.columns
+    query = user_query.lower()
 
-    if len(cols) == 1:
-        st.metric(cols[0], df.iloc[0, 0])
-
-    elif len(cols) == 2:
+    if len(cols) == 2:
         col1, col2 = cols
 
-        if "date" in col1.lower():
+        if "pie" in query or "share" in query:
+            fig, ax = plt.subplots()
+            ax.pie(df[col2], labels=df[col1], autopct='%1.1f%%')
+            st.pyplot(fig)
+
+        elif "line" in query or "trend" in query:
             st.line_chart(df.set_index(col1))
+
         else:
             st.bar_chart(df.set_index(col1))
 
     else:
         st.line_chart(df)
+
+
+# =====================================================
+# SMART RESPONSE RENDERER
+# =====================================================
+def render_response(response, user_query):
+
+    try:
+        start = response.find("{")
+        end = response.rfind("}") + 1
+
+        if start == -1 or end == -1:
+            raise ValueError
+
+        parsed = json.loads(response[start:end])
+
+        # ---------------- TABLE ----------------
+        if parsed.get("type") == "table":
+            df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
+            st.subheader("📊 Data")
+            st.dataframe(df)
+            auto_visualize(df, user_query)
+
+        # ---------------- LIST ----------------
+        elif parsed.get("type") == "list":
+            st.subheader("📌 Key Insights")
+            for item in parsed["items"]:
+                st.markdown(f"- {item}")
+
+        # ---------------- TEXT ----------------
+        elif parsed.get("type") == "text":
+            st.subheader("🧠 Summary")
+            st.write(parsed["content"])
+
+        else:
+            st.write(response)
+
+    except:
+        # fallback
+        st.subheader("🧠 Summary")
+        st.write(response)
 
 
 # =====================================================
@@ -156,9 +176,6 @@ if run_clicked:
 
                 st.success("Analysis completed")
 
-                # -------------------------------------------------
-                # Extract response safely
-                # -------------------------------------------------
                 messages = result.get("messages", [])
                 response = ""
 
@@ -170,36 +187,12 @@ if run_clicked:
                 if not response:
                     response = "No meaningful response generated."
 
-                # -------------------------------------------------
-                # SAFE JSON PARSING (robust)
-                # -------------------------------------------------
-                data = None
-                try:
-                    start = response.find("{")
-                    end = response.rfind("}") + 1
+                # 🔥 SMART RENDER
+                render_response(response, user_query)
 
-                    if start != -1 and end != -1:
-                        json_str = response[start:end]
-                        data = json.loads(json_str)
-                except Exception:
-                    data = None
-
-                # -------------------------------------------------
-                # VISUALIZATION
-                # -------------------------------------------------
-                if data and isinstance(data, dict) and "columns" in data and "data" in data:
-                    df = pd.DataFrame(data["data"], columns=data["columns"])
-                    auto_visualize(df)
-
-                # -------------------------------------------------
-                # SUMMARY
-                # -------------------------------------------------
-                st.subheader("🧠 Summary")
-                st.write(response)
-
-                # -------------------------------------------------
-                # CLEAN TEXT (FIX UNICODE ERROR)
-                # -------------------------------------------------
+                # =================================================
+                # CLEAN TEXT FOR PDF
+                # =================================================
                 def clean_text(text):
                     text = unicodedata.normalize("NFKD", text)
                     return text.encode("latin-1", "ignore").decode("latin-1")
@@ -207,9 +200,9 @@ if run_clicked:
                 clean_query = clean_text(user_query)
                 clean_response = clean_text(response)
 
-                # -------------------------------------------------
-                # PDF GENERATION
-                # -------------------------------------------------
+                # =================================================
+                # PDF
+                # =================================================
                 pdf = FPDF()
                 pdf.add_page()
 
@@ -234,9 +227,6 @@ if run_clicked:
 
                 pdf_bytes = pdf.output(dest="S").encode("latin-1")
 
-                # -------------------------------------------------
-                # DOWNLOAD BUTTON
-                # -------------------------------------------------
                 st.download_button(
                     label="📄 Download Report",
                     data=pdf_bytes,
