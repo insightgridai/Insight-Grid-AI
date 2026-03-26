@@ -128,20 +128,17 @@ def render_response(response, user_query):
 
         parsed = json.loads(response[start:end])
 
-        # ---------------- TABLE ----------------
         if parsed.get("type") == "table":
             df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
             st.subheader("📊 Data")
             st.dataframe(df)
             auto_visualize(df, user_query)
 
-        # ---------------- LIST ----------------
         elif parsed.get("type") == "list":
             st.subheader("📌 Key Insights")
             for item in parsed["items"]:
                 st.markdown(f"- {item}")
 
-        # ---------------- TEXT ----------------
         elif parsed.get("type") == "text":
             st.subheader("🧠 Summary")
             st.write(parsed["content"])
@@ -150,9 +147,51 @@ def render_response(response, user_query):
             st.write(response)
 
     except:
-        # fallback
         st.subheader("🧠 Summary")
         st.write(response)
+
+
+# =====================================================
+# 🆕 FORMAT RESPONSE FOR PDF
+# =====================================================
+def format_pdf_content(response):
+
+    try:
+        start = response.find("{")
+        end = response.rfind("}") + 1
+
+        if start == -1 or end == -1:
+            return response
+
+        parsed = json.loads(response[start:end])
+
+        # TABLE
+        if parsed.get("type") == "table":
+            columns = parsed["columns"]
+            data = parsed["data"]
+
+            lines = []
+            header = " | ".join(columns)
+            lines.append(header)
+            lines.append("-" * len(header))
+
+            for row in data:
+                lines.append(" | ".join(str(x) for x in row))
+
+            return "\n".join(lines)
+
+        # LIST
+        elif parsed.get("type") == "list":
+            return "\n".join([f"- {item}" for item in parsed["items"]])
+
+        # TEXT
+        elif parsed.get("type") == "text":
+            return parsed["content"]
+
+    except:
+        pass
+
+    return response
 
 
 # =====================================================
@@ -187,18 +226,20 @@ if run_clicked:
                 if not response:
                     response = "No meaningful response generated."
 
-                # 🔥 SMART RENDER
+                # UI render
                 render_response(response, user_query)
 
                 # =================================================
-                # CLEAN TEXT FOR PDF
+                # CLEAN + FORMAT FOR PDF
                 # =================================================
                 def clean_text(text):
                     text = unicodedata.normalize("NFKD", text)
                     return text.encode("latin-1", "ignore").decode("latin-1")
 
+                formatted_response = format_pdf_content(response)
+
                 clean_query = clean_text(user_query)
-                clean_response = clean_text(response)
+                clean_response = clean_text(formatted_response)
 
                 # =================================================
                 # PDF
