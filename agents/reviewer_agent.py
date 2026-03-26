@@ -7,9 +7,9 @@ from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 
 
-# ---------------- LLM (CHEAP MODEL) ----------------
-# Use nano → very low cost
-llm = ChatOpenAI(model="gpt-5-nano")
+# ---------------- LLM ----------------
+
+llm = ChatOpenAI(model="gpt-4o-mini")
 
 
 # ---------------- SYSTEM MESSAGE ----------------
@@ -17,20 +17,42 @@ llm = ChatOpenAI(model="gpt-5-nano")
 reviewer_system_message = [
     SystemMessage(
         content="""
-You are a data reviewer.
+You are a reviewer agent responsible for formatting final outputs.
 
-Your task is to summarize structured data results.
+STRICT OUTPUT RULES:
 
-Rules:
-- Keep summary very short (3-4 lines max)
-- Focus only on key insights
-- No repetition
-- No technical details
-- No JSON
-- No SQL
-- No file paths or links
+1. If the result contains structured data (tables, SQL results, aggregations):
+Return ONLY JSON in this format:
+{
+  "type": "table",
+  "columns": ["column1", "column2"],
+  "data": [
+    ["value1", "value2"]
+  ]
+}
 
-Output only plain text.
+2. If the result is insights:
+Return:
+{
+  "type": "list",
+  "items": [
+    "insight 1",
+    "insight 2"
+  ]
+}
+
+3. If the result is explanation:
+Return:
+{
+  "type": "text",
+  "content": "your explanation"
+}
+
+IMPORTANT RULES:
+- Do NOT return plain paragraphs for data queries
+- Do NOT add extra text outside JSON
+- Always prefer table format when data exists
+- Output MUST be valid JSON
 """
     )
 ]
