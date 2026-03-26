@@ -5,6 +5,7 @@ import pandas as pd
 from fpdf import FPDF
 import unicodedata
 import matplotlib.pyplot as plt
+import os
 
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
@@ -93,13 +94,12 @@ def auto_visualize(df, user_query):
 
     st.subheader("📈 Visualization")
 
-    cols = df.columns
     query = user_query.lower()
 
-    if len(cols) == 2:
-        col1, col2 = cols
+    if len(df.columns) == 2:
+        col1, col2 = df.columns
 
-        if "pie" in query or "share" in query:
+        if "pie" in query:
             fig, ax = plt.subplots()
             ax.pie(df[col2], labels=df[col1], autopct='%1.1f%%')
             st.pyplot(fig)
@@ -152,7 +152,7 @@ def render_response(response, user_query):
 
 
 # =====================================================
-# 🆕 FORMAT RESPONSE FOR PDF
+# FORMAT RESPONSE FOR PDF
 # =====================================================
 def format_pdf_content(response):
 
@@ -165,7 +165,6 @@ def format_pdf_content(response):
 
         parsed = json.loads(response[start:end])
 
-        # TABLE
         if parsed.get("type") == "table":
             columns = parsed["columns"]
             data = parsed["data"]
@@ -180,11 +179,9 @@ def format_pdf_content(response):
 
             return "\n".join(lines)
 
-        # LIST
         elif parsed.get("type") == "list":
             return "\n".join([f"- {item}" for item in parsed["items"]])
 
-        # TEXT
         elif parsed.get("type") == "text":
             return parsed["content"]
 
@@ -192,6 +189,29 @@ def format_pdf_content(response):
         pass
 
     return response
+
+
+# =====================================================
+# CREATE CHART IMAGE FOR PDF
+# =====================================================
+def create_chart_image(df, user_query):
+
+    query = user_query.lower()
+    fig, ax = plt.subplots()
+
+    if "pie" in query:
+        ax.pie(df.iloc[:, 1], labels=df.iloc[:, 0], autopct='%1.1f%%')
+    else:
+        ax.bar(df.iloc[:, 0], df.iloc[:, 1])
+
+    plt.xticks(rotation=45)
+
+    file_path = "chart.png"
+    plt.tight_layout()
+    plt.savefig(file_path)
+    plt.close()
+
+    return file_path
 
 
 # =====================================================
@@ -226,12 +246,10 @@ if run_clicked:
                 if not response:
                     response = "No meaningful response generated."
 
-                # UI render
+                # UI rendering
                 render_response(response, user_query)
 
-                # =================================================
-                # CLEAN + FORMAT FOR PDF
-                # =================================================
+                # Clean text
                 def clean_text(text):
                     text = unicodedata.normalize("NFKD", text)
                     return text.encode("latin-1", "ignore").decode("latin-1")
@@ -265,6 +283,27 @@ if run_clicked:
 
                 pdf.set_font("Arial", size=12)
                 pdf.multi_cell(0, 8, clean_response)
+
+                # 🔥 ADD CHART TO PDF
+                try:
+                    start = response.find("{")
+                    end = response.rfind("}") + 1
+
+                    if start != -1 and end != -1:
+                        parsed = json.loads(response[start:end])
+
+                        if parsed.get("type") == "table":
+                            df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
+
+                            chart_path = create_chart_image(df, user_query)
+
+                            pdf.ln(5)
+                            pdf.image(chart_path, x=10, w=180)
+
+                            os.remove(chart_path)
+
+                except:
+                    pass
 
                 pdf_bytes = pdf.output(dest="S").encode("latin-1")
 
