@@ -7,8 +7,9 @@ import unicodedata
 import matplotlib.pyplot as plt 
 import os
 
-from db.connection import get_db_connection from langchain_core.messages 
-import HumanMessage from agents.supervisor_agent import get_supervisor_app
+from db.connection import get_db_connection 
+from langchain_core.messages import HumanMessage 
+from agents.supervisor_agent import get_supervisor_app
 
 =====================================================
 
