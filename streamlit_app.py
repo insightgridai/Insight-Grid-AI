@@ -15,7 +15,7 @@ from agents.supervisor_agent import get_supervisor_app
 
 PAGE CONFIG
 
-=====================================================
+======================================================
 
 st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
