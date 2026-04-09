@@ -75,36 +75,64 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# INPUT + SUGGESTIONS (COPILOT STYLE)
+# INPUT + CUSTOM TABS (BLUE ACTIVE)
 # =====================================================
 st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
 
 if "user_query" not in st.session_state:
     st.session_state.user_query = ""
 
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "Summarize"
+
 selected_query = None
 
-st.markdown("### ✨ Try with suggestions")
+# ---- Custom Tab Buttons ----
+col1, col2 = st.columns(2)
 
-tab1, tab2, tab3, tab4 = st.tabs(["Learn", "Find", "Summarize", "Suggest"])
+with col1:
+    if st.button("📊 Summarize", use_container_width=True):
+        st.session_state.active_tab = "Summarize"
 
-with tab1:
-    if st.button("📘 Explain sales table"):
-        selected_query = "Explain sales_fact table"
+with col2:
+    if st.button("✨ Suggest", use_container_width=True):
+        st.session_state.active_tab = "Suggest"
 
-with tab2:
-    if st.button("🔍 Find null values"):
-        selected_query = "Find null values in customer table"
-    if st.button("🔍 Top customers"):
-        selected_query = "Top 5 customers by sales"
+# ---- Highlight Active Tab ----
+st.markdown(f"""
+<style>
+div[data-testid="stButton"] button {{
+    background-color: #1f2937;
+    color: white;
+}}
 
-with tab3:
-    if st.button("📊 Revenue summary"):
+div[data-testid="stButton"] button:focus {{
+    background-color: #2563eb !important;
+    color: white !important;
+}}
+</style>
+""", unsafe_allow_html=True)
+
+
+# =====================================================
+# TAB CONTENT
+# =====================================================
+
+# ---- Summarize ----
+if st.session_state.active_tab == "Summarize":
+    st.markdown("### 📊 Summarize Options")
+
+    if st.button("Revenue summary"):
         selected_query = "Summarize total revenue"
-    if st.button("📊 Monthly trend"):
+
+    if st.button("Monthly trend"):
         selected_query = "Monthly sales trend"
 
-with tab4:
+
+# ---- Suggest ----
+elif st.session_state.active_tab == "Suggest":
+    st.markdown("### ✨ Suggestions")
+
     option = st.selectbox(
         "Choose a suggestion",
         [
@@ -120,9 +148,13 @@ with tab4:
     if option != "Select...":
         selected_query = option
 
+
+# ---- Update Input ----
 if selected_query:
     st.session_state.user_query = selected_query
 
+
+# ---- Text Input ----
 user_query = st.text_area(
     "Enter your analysis question",
     value=st.session_state.user_query,
@@ -130,7 +162,6 @@ user_query = st.text_area(
 )
 
 run_clicked = st.button("Run Analysis")
-
 
 # =====================================================
 # VISUALIZATION CONTROL
