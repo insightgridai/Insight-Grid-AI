@@ -75,12 +75,57 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# INPUT
+# INPUT + SUGGESTIONS (COPILOT STYLE)
 # =====================================================
 st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
 
+if "user_query" not in st.session_state:
+    st.session_state.user_query = ""
+
+selected_query = None
+
+st.markdown("### ✨ Try with suggestions")
+
+tab1, tab2, tab3, tab4 = st.tabs(["Learn", "Find", "Summarize", "Suggest"])
+
+with tab1:
+    if st.button("📘 Explain sales table"):
+        selected_query = "Explain sales_fact table"
+
+with tab2:
+    if st.button("🔍 Find null values"):
+        selected_query = "Find null values in customer table"
+    if st.button("🔍 Top customers"):
+        selected_query = "Top 5 customers by sales"
+
+with tab3:
+    if st.button("📊 Revenue summary"):
+        selected_query = "Summarize total revenue"
+    if st.button("📊 Monthly trend"):
+        selected_query = "Monthly sales trend"
+
+with tab4:
+    option = st.selectbox(
+        "Choose a suggestion",
+        [
+            "Select...",
+            "Compare metadata from sales_fact and customer_dim",
+            "Show total revenue by region",
+            "Top 5 customers by sales",
+            "Monthly sales trend",
+            "Product-wise revenue distribution",
+        ]
+    )
+
+    if option != "Select...":
+        selected_query = option
+
+if selected_query:
+    st.session_state.user_query = selected_query
+
 user_query = st.text_area(
     "Enter your analysis question",
+    value=st.session_state.user_query,
     placeholder="e.g. Show revenue by division as pie chart"
 )
 
