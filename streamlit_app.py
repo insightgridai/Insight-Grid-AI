@@ -25,7 +25,6 @@ def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
-
 bg_image = get_base64_image("assets/backgroud6.jfif")
 
 st.markdown(f"""
@@ -35,11 +34,24 @@ st.markdown(f"""
     url("data:image/png;base64,{bg_image}");
     background-size: cover;
     background-position: center;
-    background-attachment: fixed;
 }}
 
 textarea {{
     background-color: rgba(0,0,0,0.6) !important;
+    color: white !important;
+}}
+
+/* Small pill buttons */
+div[data-testid="stButton"] button {{
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 13px;
+    background-color: #1f2937;
+    color: white;
+}}
+
+.active-btn {{
+    background: linear-gradient(90deg, #2563eb, #3b82f6) !important;
     color: white !important;
 }}
 </style>
@@ -75,7 +87,7 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# INPUT + CUSTOM TABS (BLUE ACTIVE)
+# INPUT UI (COMPACT MODERN)
 # =====================================================
 st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
 
@@ -87,54 +99,55 @@ if "active_tab" not in st.session_state:
 
 selected_query = None
 
-# ---- Custom Tab Buttons ----
-col1, col2 = st.columns(2)
+# ---- SMALL TABS ----
+col1, col2 = st.columns([1, 1])
 
 with col1:
-    if st.button("📊 Summarize", use_container_width=True):
+    if st.button("📊 Summarize"):
         st.session_state.active_tab = "Summarize"
 
 with col2:
-    if st.button("✨ Suggest", use_container_width=True):
+    if st.button("✨ Suggest"):
         st.session_state.active_tab = "Suggest"
 
-# ---- Highlight Active Tab ----
-st.markdown(f"""
-<style>
-div[data-testid="stButton"] button {{
-    background-color: #1f2937;
-    color: white;
-}}
-
-div[data-testid="stButton"] button:focus {{
-    background-color: #2563eb !important;
-    color: white !important;
-}}
-</style>
-""", unsafe_allow_html=True)
-
 
 # =====================================================
-# TAB CONTENT
+# SUMMARIZE OPTIONS (INLINE CHIPS)
 # =====================================================
-
-# ---- Summarize ----
 if st.session_state.active_tab == "Summarize":
     st.markdown("### 📊 Summarize Options")
 
-    if st.button("Revenue summary"):
-        selected_query = "Summarize total revenue"
+    c1, c2, c3, c4, c5 = st.columns(5)
 
-    if st.button("Monthly trend"):
-        selected_query = "Monthly sales trend"
+    with c1:
+        if st.button("Revenue"):
+            selected_query = "Summarize total revenue"
+
+    with c2:
+        if st.button("Monthly"):
+            selected_query = "Monthly sales trend"
+
+    with c3:
+        if st.button("Avg Order"):
+            selected_query = "Average order value"
+
+    with c4:
+        if st.button("Top Products"):
+            selected_query = "Top products by revenue"
+
+    with c5:
+        if st.button("Region"):
+            selected_query = "Revenue by region"
 
 
-# ---- Suggest ----
+# =====================================================
+# SUGGESTIONS (SMALL DROPDOWN)
+# =====================================================
 elif st.session_state.active_tab == "Suggest":
     st.markdown("### ✨ Suggestions")
 
     option = st.selectbox(
-        "Choose a suggestion",
+        "",
         [
             "Select...",
             "Compare metadata from sales_fact and customer_dim",
@@ -149,33 +162,29 @@ elif st.session_state.active_tab == "Suggest":
         selected_query = option
 
 
-# ---- Update Input ----
+# ---- Update input ----
 if selected_query:
     st.session_state.user_query = selected_query
 
 
-# ---- Text Input ----
+# ---- TEXT INPUT ----
 user_query = st.text_area(
-    "Enter your analysis question",
+    "",
     value=st.session_state.user_query,
-    placeholder="e.g. Show revenue by division as pie chart"
+    placeholder="Ask your data question..."
 )
 
 run_clicked = st.button("Run Analysis")
+
 
 # =====================================================
 # VISUALIZATION CONTROL
 # =====================================================
 def should_show_visualization(user_query, df):
     query = user_query.lower()
-
     if "metadata" in query or "schema" in query:
         return False
-
-    if df.shape[1] == 2:
-        return True
-
-    return False
+    return df.shape[1] == 2
 
 
 def auto_visualize(df, user_query):
@@ -188,14 +197,10 @@ def auto_visualize(df, user_query):
             fig, ax = plt.subplots()
             ax.pie(df[col2], labels=df[col1], autopct='%1.1f%%')
             st.pyplot(fig)
-
-        elif "line" in query or "trend" in query:
+        elif "line" in query:
             st.line_chart(df.set_index(col1))
-
         else:
             st.bar_chart(df.set_index(col1))
-    else:
-        st.line_chart(df)
 
 
 # =====================================================
@@ -204,78 +209,25 @@ def auto_visualize(df, user_query):
 def render_response(response, user_query):
 
     try:
-        start = response.find("{")
-        end = response.rfind("}") + 1
-
-        if start == -1 or end == -1:
-            raise ValueError
-
-        parsed = json.loads(response[start:end])
+        parsed = json.loads(response)
 
         if parsed.get("type") == "table":
             df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
-            st.subheader("📊 Data")
             st.dataframe(df)
 
             if should_show_visualization(user_query, df):
-                with st.expander("📈 View Visualization"):
+                with st.expander("📈 Visualization"):
                     auto_visualize(df, user_query)
 
         elif parsed.get("type") == "list":
-            st.subheader("📌 Key Insights")
             for item in parsed["items"]:
                 st.markdown(f"- {item}")
 
         elif parsed.get("type") == "text":
-            st.subheader("🧠 Summary")
             st.write(parsed["content"])
 
-        else:
-            st.write(response)
-
     except:
-        st.subheader("🧠 Summary")
         st.write(response)
-
-
-# =====================================================
-# PDF FORMATTER
-# =====================================================
-def format_pdf_content(response):
-
-    try:
-        start = response.find("{")
-        end = response.rfind("}") + 1
-
-        if start == -1 or end == -1:
-            return response
-
-        parsed = json.loads(response[start:end])
-
-        if parsed.get("type") == "table":
-            columns = parsed["columns"]
-            data = parsed["data"]
-
-            lines = []
-            header = " | ".join(columns)
-            lines.append(header)
-            lines.append("-" * len(header))
-
-            for row in data:
-                lines.append(" | ".join(str(x) for x in row))
-
-            return "\n".join(lines)
-
-        elif parsed.get("type") == "list":
-            return "\n".join([f"- {item}" for item in parsed["items"]])
-
-        elif parsed.get("type") == "text":
-            return parsed["content"]
-
-    except:
-        pass
-
-    return response
 
 
 # =====================================================
@@ -284,20 +236,18 @@ def format_pdf_content(response):
 if run_clicked:
 
     if not user_query.strip():
-        st.warning("Please enter a question.")
+        st.warning("Enter a query")
 
     else:
-        with st.spinner("Running Multi-Agent System..."):
+        with st.spinner("Running..."):
 
             try:
-                supervisor_app = get_supervisor_app()
+                app = get_supervisor_app()
 
-                result = supervisor_app.invoke({
+                result = app.invoke({
                     "messages": [HumanMessage(content=user_query)],
                     "step": 0
                 })
-
-                st.success("Analysis completed")
 
                 messages = result.get("messages", [])
                 response = ""
@@ -307,51 +257,8 @@ if run_clicked:
                         response = msg.content
                         break
 
-                if not response:
-                    response = "No meaningful response generated."
-
                 render_response(response, user_query)
 
-                def clean_text(text):
-                    text = unicodedata.normalize("NFKD", text)
-                    return text.encode("latin-1", "ignore").decode("latin-1")
-
-                formatted_response = format_pdf_content(response)
-
-                clean_query = clean_text(user_query)
-                clean_response = clean_text(formatted_response)
-
-                pdf = FPDF()
-                pdf.add_page()
-
-                pdf.set_font("Arial", "B", 14)
-                pdf.cell(0, 10, "Database Analysis Report", ln=True)
-
-                pdf.ln(5)
-
-                pdf.set_font("Arial", "B", 12)
-                pdf.cell(0, 8, "Query:", ln=True)
-
-                pdf.set_font("Arial", size=12)
-                pdf.multi_cell(0, 8, clean_query)
-
-                pdf.ln(5)
-
-                pdf.set_font("Arial", "B", 12)
-                pdf.cell(0, 8, "Summary:", ln=True)
-
-                pdf.set_font("Arial", size=12)
-                pdf.multi_cell(0, 8, clean_response)
-
-                pdf_bytes = pdf.output(dest="S").encode("latin-1")
-
-                st.download_button(
-                    label="📄 Download Report",
-                    data=pdf_bytes,
-                    file_name="analysis_report.pdf",
-                    mime="application/pdf"
-                )
-
             except Exception as e:
-                st.error("Agent or processing failed ❌")
+                st.error("Error")
                 st.exception(e)
