@@ -2,28 +2,24 @@ import streamlit as st
 import base64
 import json
 import pandas as pd
-from fpdf import FPDF
-import unicodedata
 import matplotlib.pyplot as plt
-import os
 
-from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
 from agents.supervisor_agent import get_supervisor_app
 
 
 # =====================================================
-# PAGE CONFIG
+# CONFIG
 # =====================================================
 st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND IMAGE
+# BACKGROUND
 # =====================================================
-def get_base64_image(image_path):
-    with open(image_path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode()
+def get_base64_image(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
 
 bg_image = get_base64_image("assets/backgroud6.jfif")
 
@@ -33,25 +29,9 @@ st.markdown(f"""
     background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
     url("data:image/png;base64,{bg_image}");
     background-size: cover;
-    background-position: center;
 }}
-
 textarea {{
     background-color: rgba(0,0,0,0.6) !important;
-    color: white !important;
-}}
-
-/* Small pill buttons */
-div[data-testid="stButton"] button {{
-    border-radius: 20px;
-    padding: 6px 14px;
-    font-size: 13px;
-    background-color: #1f2937;
-    color: white;
-}}
-
-.active-btn {{
-    background: linear-gradient(90deg, #2563eb, #3b82f6) !important;
     color: white !important;
 }}
 </style>
@@ -61,89 +41,70 @@ div[data-testid="stButton"] button {{
 # =====================================================
 # HEADER
 # =====================================================
-col1, col2 = st.columns([6, 2])
-
-with col1:
-    st.markdown("""
-    <h2>🤖 Insight Grid AI</h2>
-    <p style="color:#9ca3af;">Where Data, Agents, and Decisions Connect</p>
-    """, unsafe_allow_html=True)
-
-with col2:
-    if st.button("🔌 Test DB Connection"):
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.fetchone()
-            cur.close()
-            conn.close()
-            st.success("Connection Successful ✅")
-        except Exception as e:
-            st.error("Connection Failed ❌")
-            st.exception(e)
-
-st.markdown("<hr>", unsafe_allow_html=True)
+st.markdown("## 🤖 Insight Grid AI")
 
 
 # =====================================================
-# INPUT UI (COMPACT MODERN)
+# STATE
 # =====================================================
-st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
-
 if "user_query" not in st.session_state:
     st.session_state.user_query = ""
 
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = "Summarize"
+if "mode" not in st.session_state:
+    st.session_state.mode = "summarize"
 
 selected_query = None
 
-# ---- SMALL TABS ----
-col1, col2 = st.columns([1, 1])
 
-with col1:
+# =====================================================
+# MODE SWITCH
+# =====================================================
+c1, c2 = st.columns(2)
+
+with c1:
     if st.button("📊 Summarize"):
-        st.session_state.active_tab = "Summarize"
+        st.session_state.mode = "summarize"
 
-with col2:
+with c2:
     if st.button("✨ Suggest"):
-        st.session_state.active_tab = "Suggest"
+        st.session_state.mode = "suggest"
 
 
 # =====================================================
-# SUMMARIZE OPTIONS (INLINE CHIPS)
+# SUMMARIZE QUESTIONS (WITH VISUALIZATION)
 # =====================================================
-if st.session_state.active_tab == "Summarize":
+if st.session_state.mode == "summarize":
+
     st.markdown("### 📊 Summarize Options")
 
     c1, c2, c3, c4, c5 = st.columns(5)
 
     with c1:
-        if st.button("Revenue"):
-            selected_query = "Summarize total revenue"
+        if st.button("Region Revenue"):
+            selected_query = "Show total revenue by region as a pie chart"
 
     with c2:
-        if st.button("Monthly"):
-            selected_query = "Monthly sales trend"
+        if st.button("Monthly Trend"):
+            selected_query = "Show monthly sales trend as a line chart"
 
     with c3:
-        if st.button("Avg Order"):
-            selected_query = "Average order value"
+        if st.button("Top Products"):
+            selected_query = "Show top 5 products by revenue as a bar chart"
 
     with c4:
-        if st.button("Top Products"):
-            selected_query = "Top products by revenue"
+        if st.button("Store Sales"):
+            selected_query = "Show revenue distribution by store as a bar chart"
 
     with c5:
-        if st.button("Region"):
-            selected_query = "Revenue by region"
+        if st.button("Daily Transactions"):
+            selected_query = "Show daily transaction count trend as a line chart"
 
 
 # =====================================================
-# SUGGESTIONS (SMALL DROPDOWN)
+# SUGGEST (NO VISUALIZATION)
 # =====================================================
-elif st.session_state.active_tab == "Suggest":
+else:
+
     st.markdown("### ✨ Suggestions")
 
     option = st.selectbox(
@@ -151,10 +112,10 @@ elif st.session_state.active_tab == "Suggest":
         [
             "Select...",
             "Compare metadata from sales_fact and customer_dim",
-            "Show total revenue by region",
-            "Top 5 customers by sales",
-            "Monthly sales trend",
-            "Product-wise revenue distribution",
+            "List top 5 customers by total purchase value",
+            "What is the average order value overall?",
+            "Show total number of transactions completed today",
+            "Which product category has the highest sales?"
         ]
     )
 
@@ -162,12 +123,12 @@ elif st.session_state.active_tab == "Suggest":
         selected_query = option
 
 
-# ---- Update input ----
+# =====================================================
+# INPUT
+# =====================================================
 if selected_query:
     st.session_state.user_query = selected_query
 
-
-# ---- TEXT INPUT ----
 user_query = st.text_area(
     "",
     value=st.session_state.user_query,
@@ -178,33 +139,36 @@ run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# VISUALIZATION CONTROL
+# VISUALIZATION CONTROL (KEY LOGIC 🔥)
 # =====================================================
 def should_show_visualization(user_query, df):
-    query = user_query.lower()
-    if "metadata" in query or "schema" in query:
+
+    # Only allow visualization in summarize mode
+    if st.session_state.mode != "summarize":
         return False
+
     return df.shape[1] == 2
 
 
 def auto_visualize(df, user_query):
+
     query = user_query.lower()
+    col1, col2 = df.columns
 
-    if len(df.columns) == 2:
-        col1, col2 = df.columns
+    if "pie" in query:
+        fig, ax = plt.subplots()
+        ax.pie(df[col2], labels=df[col1], autopct='%1.1f%%')
+        st.pyplot(fig)
 
-        if "pie" in query:
-            fig, ax = plt.subplots()
-            ax.pie(df[col2], labels=df[col1], autopct='%1.1f%%')
-            st.pyplot(fig)
-        elif "line" in query:
-            st.line_chart(df.set_index(col1))
-        else:
-            st.bar_chart(df.set_index(col1))
+    elif "line" in query:
+        st.line_chart(df.set_index(col1))
+
+    else:
+        st.bar_chart(df.set_index(col1))
 
 
 # =====================================================
-# RESPONSE RENDERER
+# RESPONSE RENDER
 # =====================================================
 def render_response(response, user_query):
 
@@ -216,8 +180,8 @@ def render_response(response, user_query):
             st.dataframe(df)
 
             if should_show_visualization(user_query, df):
-                with st.expander("📈 Visualization"):
-                    auto_visualize(df, user_query)
+                st.subheader("📈 Visualization")
+                auto_visualize(df, user_query)
 
         elif parsed.get("type") == "list":
             for item in parsed["items"]:
@@ -231,7 +195,7 @@ def render_response(response, user_query):
 
 
 # =====================================================
-# RUN ANALYSIS
+# RUN
 # =====================================================
 if run_clicked:
 
