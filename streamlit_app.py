@@ -5,7 +5,6 @@ import pandas as pd
 from fpdf import FPDF
 import unicodedata
 import matplotlib.pyplot as plt
-import os
 
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
@@ -19,7 +18,7 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# SESSION STATE (🔥 FIX RESET ISSUE)
+# SESSION STATE (FIX RESET ISSUE)
 # =====================================================
 if "user_query" not in st.session_state:
     st.session_state.user_query = ""
@@ -32,9 +31,6 @@ if "response" not in st.session_state:
 
 if "df" not in st.session_state:
     st.session_state.df = None
-
-if "chart_type" not in st.session_state:
-    st.session_state.chart_type = "KPI"
 
 
 # =====================================================
@@ -52,11 +48,6 @@ st.markdown(f"""
     background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
     url("data:image/png;base64,{bg_image}");
     background-size: cover;
-}}
-
-textarea {{
-    background-color: rgba(0,0,0,0.6) !important;
-    color: white !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -91,15 +82,9 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# DATA ENGINE
-# =====================================================
-st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
-
-
-# =====================================================
 # MODE SWITCH
 # =====================================================
-col1, col2 = st.columns([1, 1])
+col1, col2 = st.columns(2)
 
 with col1:
     if st.button("📊 Summarize"):
@@ -136,15 +121,15 @@ if st.session_state.mode == "summarize":
 
     with c4:
         if st.button("Store Sales"):
-            selected_query = "Show revenue distribution by store as a bar chart"
+            selected_query = "Show revenue by store as a bar chart"
 
     with c5:
-        if st.button("Daily Transactions"):
-            selected_query = "Show daily transaction count as a bar chart"
+        if st.button("Transactions"):
+            selected_query = "Show total transactions by day as a bar chart"
 
 
 # =====================================================
-# SUGGEST OPTIONS
+# SUGGEST
 # =====================================================
 else:
 
@@ -154,8 +139,8 @@ else:
         "",
         [
             "Select...",
-            "List top 5 customers by total purchase value",
-            "What is the average order value?",
+            "Top 5 customers by revenue",
+            "Average order value",
             "Total transactions today",
             "Highest selling product category",
             "Customer count by region"
@@ -167,7 +152,7 @@ else:
 
 
 # =====================================================
-# INPUT BOX
+# INPUT
 # =====================================================
 if selected_query:
     st.session_state.user_query = selected_query
@@ -182,25 +167,22 @@ run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# VISUALIZATION FUNCTION (🔥 NO RESET)
+# VISUALIZATION FUNCTION
 # =====================================================
 def show_visualization(df):
 
-    col1, col2 = df.columns
+    col1, col2 = df.columns[:2]
 
     st.markdown("### 📈 Visualization")
 
     chart = st.selectbox(
         "Choose Visualization",
-        ["KPI", "Bar Chart", "Pie Chart", "Area Chart"],
-        key="chart_selector"
+        ["KPI", "Bar Chart", "Pie Chart", "Area Chart"]
     )
-
-    st.session_state.chart_type = chart
 
     if chart == "KPI":
         total = df[col2].sum()
-        st.metric("Total Value ($)", f"${total:,.2f}")
+        st.metric("Total ($)", f"${total:,.2f}")
 
     elif chart == "Bar Chart":
         st.bar_chart(df.set_index(col1))
@@ -215,7 +197,7 @@ def show_visualization(df):
 
 
 # =====================================================
-# RUN ANALYSIS (🔥 STORE RESULT)
+# RUN ANALYSIS
 # =====================================================
 if run_clicked:
 
@@ -223,12 +205,12 @@ if run_clicked:
         st.warning("Enter a query")
 
     else:
-        with st.spinner("Running Multi-Agent System..."):
+        with st.spinner("Running..."):
 
             try:
-                supervisor_app = get_supervisor_app()
+                app = get_supervisor_app()
 
-                result = supervisor_app.invoke({
+                result = app.invoke({
                     "messages": [HumanMessage(content=user_query)],
                     "step": 0
                 })
@@ -241,16 +223,16 @@ if run_clicked:
                         response = msg.content
                         break
 
-                # 🔥 STORE RESPONSE
+                # STORE RESPONSE
                 st.session_state.response = response
 
             except Exception as e:
-                st.error("Agent failed ❌")
+                st.error("Error")
                 st.exception(e)
 
 
 # =====================================================
-# DISPLAY RESULT (🔥 NO RESET)
+# DISPLAY RESPONSE (🔥 FIXED JSON PARSE)
 # =====================================================
 if st.session_state.response:
 
@@ -259,6 +241,7 @@ if st.session_state.response:
     try:
         start = response.find("{")
         end = response.rfind("}") + 1
+
         parsed = json.loads(response[start:end])
 
         if parsed.get("type") == "table":
@@ -269,7 +252,6 @@ if st.session_state.response:
             st.subheader("📊 Data ($)")
             st.dataframe(df)
 
-            # 🔥 ONLY SUMMARIZE SHOWS VISUAL
             if st.session_state.mode == "summarize":
                 show_visualization(df)
 
@@ -281,11 +263,12 @@ if st.session_state.response:
             st.write(parsed["content"])
 
     except:
+        st.error("Parsing error")
         st.write(response)
 
 
 # =====================================================
-# PDF DOWNLOAD (UNCHANGED)
+# PDF DOWNLOAD
 # =====================================================
 if st.session_state.response:
 
