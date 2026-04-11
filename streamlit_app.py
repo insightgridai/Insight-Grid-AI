@@ -18,11 +18,12 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND IMAGE
+# BACKGROUND
 # =====================================================
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
+
 
 bg_image = get_base64_image("assets/backgroud6.jfif")
 
@@ -79,19 +80,13 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# DATA ENGINE
+# SESSION STATE
 # =====================================================
-st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
-
-
-# =====================================================
-# SESSION STATE (IMPORTANT FIX)
-# =====================================================
-if "user_query" not in st.session_state:
-    st.session_state.user_query = ""
-
 if "mode" not in st.session_state:
     st.session_state.mode = "summarize"
+
+if "user_query" not in st.session_state:
+    st.session_state.user_query = ""
 
 if "last_df" not in st.session_state:
     st.session_state.last_df = None
@@ -100,13 +95,12 @@ if "last_response" not in st.session_state:
     st.session_state.last_response = ""
 
 
-selected_query = None
-
-
 # =====================================================
-# MODE SWITCH
+# DATA ENGINE
 # =====================================================
-col1, col2 = st.columns([1, 1])
+st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
+
+col1, col2 = st.columns(2)
 
 with col1:
     if st.button("📊 Summarize"):
@@ -115,6 +109,9 @@ with col1:
 with col2:
     if st.button("✨ Suggest"):
         st.session_state.mode = "suggest"
+
+
+selected_query = None
 
 
 # =====================================================
@@ -148,7 +145,7 @@ if st.session_state.mode == "summarize":
 
 
 # =====================================================
-# SUGGEST (NO VISUALIZATION)
+# SUGGEST
 # =====================================================
 else:
 
@@ -191,11 +188,13 @@ run_clicked = st.button("Run Analysis")
 def show_visualization(df):
 
     if len(df.columns) < 2:
-        st.warning("Not enough data for visualization")
+        st.warning("Not enough data")
         return
 
     label_col = df.columns[1]
     value_col = df.columns[-1]
+
+    df[value_col] = pd.to_numeric(df[value_col], errors="coerce")
 
     st.markdown("### 📈 Visualization")
 
@@ -205,40 +204,47 @@ def show_visualization(df):
         key="chart_selector"
     )
 
-    df[value_col] = pd.to_numeric(df[value_col], errors="coerce")
-
     if chart == "KPI":
         total = df[value_col].sum()
-        st.metric("Total ($)", f"${total:,.2f}")
+        st.metric("Total Revenue ($)", f"${total:,.2f}")
 
     elif chart == "Bar Chart":
-        st.bar_chart(df.set_index(label_col)[value_col])
+        chart_df = df[[label_col, value_col]].copy()
+        chart_df = chart_df.sort_values(by=value_col, ascending=False)
+        st.bar_chart(chart_df.set_index(label_col))
 
     elif chart == "Pie Chart":
+        chart_df = df[[label_col, value_col]].copy()
         fig, ax = plt.subplots()
-        ax.pie(df[value_col], labels=df[label_col], autopct='%1.1f%%')
+        ax.pie(chart_df[value_col], labels=chart_df[label_col], autopct='%1.1f%%')
         st.pyplot(fig)
 
     elif chart == "Area Chart":
-        st.area_chart(df.set_index(label_col)[value_col])
+        chart_df = df[[label_col, value_col]].copy()
+        st.area_chart(chart_df.set_index(label_col))
 
 
 # =====================================================
-# RESPONSE RENDER
+# RESPONSE HANDLER (FIXED JSON PARSE)
 # =====================================================
 def render_response(response):
 
     try:
-        start = response.find("{")
-        end = response.rfind("}") + 1
+        cleaned = response.strip()
+        start = cleaned.find("{")
+        end = cleaned.rfind("}") + 1
 
-        parsed = json.loads(response[start:end])
+        json_str = cleaned[start:end]
+
+        # 🔥 FIX SINGLE QUOTES
+        json_str = json_str.replace("'", '"')
+
+        parsed = json.loads(json_str)
 
         if parsed.get("type") == "table":
 
             df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
 
-            # ✅ Store for re-use (NO RESET FIX)
             st.session_state.last_df = df
             st.session_state.last_response = response
 
@@ -255,7 +261,8 @@ def render_response(response):
         elif parsed.get("type") == "text":
             st.write(parsed["content"])
 
-    except:
+    except Exception as e:
+        st.error("Parsing error")
         st.write(response)
 
 
@@ -294,7 +301,7 @@ if run_clicked:
 
 
 # =====================================================
-# 🔥 KEEP RESULT AFTER CLICK (NO RESET FIX)
+# KEEP RESULT (NO RESET)
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
@@ -306,7 +313,7 @@ if st.session_state.last_df is not None and not run_clicked:
 
 
 # =====================================================
-# PDF DOWNLOAD (UNCHANGED)
+# PDF DOWNLOAD
 # =====================================================
 if st.session_state.last_response:
 
