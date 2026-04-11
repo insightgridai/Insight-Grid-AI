@@ -2,24 +2,28 @@ import streamlit as st
 import base64
 import json
 import pandas as pd
+from fpdf import FPDF
+import unicodedata
 import matplotlib.pyplot as plt
+import os
 
+from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
 from agents.supervisor_agent import get_supervisor_app
 
 
 # =====================================================
-# CONFIG
+# PAGE CONFIG
 # =====================================================
 st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND
+# BACKGROUND IMAGE
 # =====================================================
-def get_base64_image(path):
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
+def get_base64_image(image_path):
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
 
 bg_image = get_base64_image("assets/backgroud6.jfif")
 
@@ -30,9 +34,18 @@ st.markdown(f"""
     url("data:image/png;base64,{bg_image}");
     background-size: cover;
 }}
+
 textarea {{
     background-color: rgba(0,0,0,0.6) !important;
     color: white !important;
+}}
+
+div[data-testid="stButton"] button {{
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 13px;
+    background-color: #1f2937;
+    color: white;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -41,11 +54,39 @@ textarea {{
 # =====================================================
 # HEADER
 # =====================================================
-st.markdown("## 🤖 Insight Grid AI")
+col1, col2 = st.columns([6, 2])
+
+with col1:
+    st.markdown("""
+    <h2>🤖 Insight Grid AI</h2>
+    <p style="color:#9ca3af;">Where Data, Agents, and Decisions Connect</p>
+    """, unsafe_allow_html=True)
+
+with col2:
+    if st.button("🔌 Test DB Connection"):
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            cur.close()
+            conn.close()
+            st.success("Connection Successful ✅")
+        except Exception as e:
+            st.error("Connection Failed ❌")
+            st.exception(e)
+
+st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# STATE
+# DATA ENGINE
+# =====================================================
+st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
+
+
+# =====================================================
+# SESSION STATE
 # =====================================================
 if "user_query" not in st.session_state:
     st.session_state.user_query = ""
@@ -59,19 +100,19 @@ selected_query = None
 # =====================================================
 # MODE SWITCH
 # =====================================================
-c1, c2 = st.columns(2)
+col1, col2 = st.columns([1, 1])
 
-with c1:
+with col1:
     if st.button("📊 Summarize"):
         st.session_state.mode = "summarize"
 
-with c2:
+with col2:
     if st.button("✨ Suggest"):
         st.session_state.mode = "suggest"
 
 
 # =====================================================
-# SUMMARIZE QUESTIONS (WITH VISUALIZATION)
+# SUMMARIZE (WITH VISUALIZATION)
 # =====================================================
 if st.session_state.mode == "summarize":
 
@@ -124,7 +165,7 @@ else:
 
 
 # =====================================================
-# INPUT
+# INPUT BOX
 # =====================================================
 if selected_query:
     st.session_state.user_query = selected_query
@@ -139,14 +180,11 @@ run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# VISUALIZATION CONTROL (KEY LOGIC 🔥)
+# VISUALIZATION CONTROL
 # =====================================================
 def should_show_visualization(user_query, df):
-
-    # Only allow visualization in summarize mode
     if st.session_state.mode != "summarize":
         return False
-
     return df.shape[1] == 2
 
 
@@ -168,12 +206,15 @@ def auto_visualize(df, user_query):
 
 
 # =====================================================
-# RESPONSE RENDER
+# RESPONSE RENDERER
 # =====================================================
 def render_response(response, user_query):
 
     try:
-        parsed = json.loads(response)
+        start = response.find("{")
+        end = response.rfind("}") + 1
+
+        parsed = json.loads(response[start:end])
 
         if parsed.get("type") == "table":
             df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
@@ -184,10 +225,12 @@ def render_response(response, user_query):
                 auto_visualize(df, user_query)
 
         elif parsed.get("type") == "list":
+            st.subheader("📌 Insights")
             for item in parsed["items"]:
                 st.markdown(f"- {item}")
 
         elif parsed.get("type") == "text":
+            st.subheader("🧠 Summary")
             st.write(parsed["content"])
 
     except:
@@ -195,7 +238,44 @@ def render_response(response, user_query):
 
 
 # =====================================================
-# RUN
+# PDF FORMATTER (UNCHANGED FEATURE)
+# =====================================================
+def format_pdf_content(response):
+
+    try:
+        start = response.find("{")
+        end = response.rfind("}") + 1
+
+        parsed = json.loads(response[start:end])
+
+        if parsed.get("type") == "table":
+            columns = parsed["columns"]
+            data = parsed["data"]
+
+            lines = []
+            header = " | ".join(columns)
+            lines.append(header)
+            lines.append("-" * len(header))
+
+            for row in data:
+                lines.append(" | ".join(str(x) for x in row))
+
+            return "\n".join(lines)
+
+        elif parsed.get("type") == "list":
+            return "\n".join([f"- {item}" for item in parsed["items"]])
+
+        elif parsed.get("type") == "text":
+            return parsed["content"]
+
+    except:
+        pass
+
+    return response
+
+
+# =====================================================
+# RUN ANALYSIS
 # =====================================================
 if run_clicked:
 
@@ -203,15 +283,17 @@ if run_clicked:
         st.warning("Enter a query")
 
     else:
-        with st.spinner("Running..."):
+        with st.spinner("Running Multi-Agent System..."):
 
             try:
-                app = get_supervisor_app()
+                supervisor_app = get_supervisor_app()
 
-                result = app.invoke({
+                result = supervisor_app.invoke({
                     "messages": [HumanMessage(content=user_query)],
                     "step": 0
                 })
+
+                st.success("Analysis completed ✅")
 
                 messages = result.get("messages", [])
                 response = ""
@@ -223,6 +305,46 @@ if run_clicked:
 
                 render_response(response, user_query)
 
+                # =====================================================
+                # PDF DOWNLOAD (RESTORED 🔥)
+                # =====================================================
+                def clean_text(text):
+                    text = unicodedata.normalize("NFKD", text)
+                    return text.encode("latin-1", "ignore").decode("latin-1")
+
+                formatted = format_pdf_content(response)
+
+                pdf = FPDF()
+                pdf.add_page()
+
+                pdf.set_font("Arial", "B", 14)
+                pdf.cell(0, 10, "Database Analysis Report", ln=True)
+
+                pdf.ln(5)
+
+                pdf.set_font("Arial", "B", 12)
+                pdf.cell(0, 8, "Query:", ln=True)
+
+                pdf.set_font("Arial", size=12)
+                pdf.multi_cell(0, 8, clean_text(user_query))
+
+                pdf.ln(5)
+
+                pdf.set_font("Arial", "B", 12)
+                pdf.cell(0, 8, "Summary:", ln=True)
+
+                pdf.set_font("Arial", size=12)
+                pdf.multi_cell(0, 8, clean_text(formatted))
+
+                pdf_bytes = pdf.output(dest="S").encode("latin-1")
+
+                st.download_button(
+                    label="📄 Download Report",
+                    data=pdf_bytes,
+                    file_name="analysis_report.pdf",
+                    mime="application/pdf"
+                )
+
             except Exception as e:
-                st.error("Error")
+                st.error("Agent failed ❌")
                 st.exception(e)
