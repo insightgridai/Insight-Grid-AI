@@ -3,7 +3,9 @@ import base64
 import json
 import pandas as pd
 from fpdf import FPDF
+import unicodedata
 import matplotlib.pyplot as plt
+import os
 
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
@@ -39,12 +41,18 @@ textarea {{
     color: white !important;
 }}
 
+/* Small pill buttons */
 div[data-testid="stButton"] button {{
     border-radius: 20px;
     padding: 6px 14px;
     font-size: 13px;
     background-color: #1f2937;
     color: white;
+}}
+
+.active-btn {{
+    background: linear-gradient(90deg, #2563eb, #3b82f6) !important;
+    color: white !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -79,8 +87,10 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# STATE
+# INPUT UI (COMPACT MODERN)
 # =====================================================
+st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
+
 if "user_query" not in st.session_state:
     st.session_state.user_query = ""
 
@@ -89,58 +99,49 @@ if "active_tab" not in st.session_state:
 
 selected_query = None
 
+# ---- SMALL TABS ----
+col1, col2 = st.columns([1, 1])
 
-# =====================================================
-# DATA ENGINE — SUMMARIZE + SUGGEST SIDE BY SIDE ✅
-# =====================================================
-st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
-
-tab1, tab2 = st.columns([1, 1])
-
-with tab1:
+with col1:
     if st.button("📊 Summarize"):
         st.session_state.active_tab = "Summarize"
 
-with tab2:
+with col2:
     if st.button("✨ Suggest"):
         st.session_state.active_tab = "Suggest"
 
 
 # =====================================================
-# SUMMARIZE OPTIONS — REVENUE + MONTHLY SIDE BY SIDE ✅
+# SUMMARIZE OPTIONS (INLINE CHIPS)
 # =====================================================
 if st.session_state.active_tab == "Summarize":
     st.markdown("### 📊 Summarize Options")
 
-    # Row 1
-    r1c1, r1c2, r1c3 = st.columns([1, 1, 1])
+    c1, c2, c3, c4, c5 = st.columns(5)
 
-    with r1c1:
+    with c1:
         if st.button("Revenue"):
             selected_query = "Summarize total revenue"
 
-    with r1c2:
+    with c2:
         if st.button("Monthly"):
             selected_query = "Monthly sales trend"
 
-    with r1c3:
+    with c3:
         if st.button("Avg Order"):
             selected_query = "Average order value"
 
-    # Row 2
-    r2c1, r2c2, _ = st.columns([1, 1, 1])
-
-    with r2c1:
+    with c4:
         if st.button("Top Products"):
             selected_query = "Top products by revenue"
 
-    with r2c2:
+    with c5:
         if st.button("Region"):
             selected_query = "Revenue by region"
 
 
 # =====================================================
-# SUGGEST OPTIONS
+# SUGGESTIONS (SMALL DROPDOWN)
 # =====================================================
 elif st.session_state.active_tab == "Suggest":
     st.markdown("### ✨ Suggestions")
@@ -161,12 +162,12 @@ elif st.session_state.active_tab == "Suggest":
         selected_query = option
 
 
-# =====================================================
-# INPUT
-# =====================================================
+# ---- Update input ----
 if selected_query:
     st.session_state.user_query = selected_query
 
+
+# ---- TEXT INPUT ----
 user_query = st.text_area(
     "",
     value=st.session_state.user_query,
@@ -177,23 +178,36 @@ run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# VISUALIZATION
+# VISUALIZATION CONTROL
 # =====================================================
 def should_show_visualization(user_query, df):
-    if "metadata" in user_query.lower():
+    query = user_query.lower()
+    if "metadata" in query or "schema" in query:
         return False
     return df.shape[1] == 2
 
 
 def auto_visualize(df, user_query):
-    col1, col2 = df.columns
-    st.bar_chart(df.set_index(col1))
+    query = user_query.lower()
+
+    if len(df.columns) == 2:
+        col1, col2 = df.columns
+
+        if "pie" in query:
+            fig, ax = plt.subplots()
+            ax.pie(df[col2], labels=df[col1], autopct='%1.1f%%')
+            st.pyplot(fig)
+        elif "line" in query:
+            st.line_chart(df.set_index(col1))
+        else:
+            st.bar_chart(df.set_index(col1))
 
 
 # =====================================================
 # RESPONSE RENDERER
 # =====================================================
 def render_response(response, user_query):
+
     try:
         parsed = json.loads(response)
 
@@ -205,12 +219,12 @@ def render_response(response, user_query):
                 with st.expander("📈 Visualization"):
                     auto_visualize(df, user_query)
 
-        elif parsed.get("type") == "text":
-            st.write(parsed["content"])
-
         elif parsed.get("type") == "list":
             for item in parsed["items"]:
                 st.markdown(f"- {item}")
+
+        elif parsed.get("type") == "text":
+            st.write(parsed["content"])
 
     except:
         st.write(response)
@@ -220,19 +234,25 @@ def render_response(response, user_query):
 # RUN ANALYSIS
 # =====================================================
 if run_clicked:
+
     if not user_query.strip():
         st.warning("Enter a query")
+
     else:
         with st.spinner("Running..."):
+
             try:
                 app = get_supervisor_app()
+
                 result = app.invoke({
                     "messages": [HumanMessage(content=user_query)],
                     "step": 0
                 })
 
+                messages = result.get("messages", [])
                 response = ""
-                for msg in reversed(result.get("messages", [])):
+
+                for msg in reversed(messages):
                     if getattr(msg, "type", "") == "ai":
                         response = msg.content
                         break
