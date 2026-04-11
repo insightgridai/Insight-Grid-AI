@@ -220,7 +220,7 @@ def auto_visualize(df, user_query):
             st.bar_chart(df.set_index(col1))
 
 
-# =====================================================
+# ======================================================
 # RESPONSE RENDERER
 # =====================================================
 def render_response(response, user_query):
