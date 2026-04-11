@@ -19,7 +19,26 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND IMAGE
+# SESSION STATE (🔥 FIX RESET ISSUE)
+# =====================================================
+if "user_query" not in st.session_state:
+    st.session_state.user_query = ""
+
+if "mode" not in st.session_state:
+    st.session_state.mode = "summarize"
+
+if "response" not in st.session_state:
+    st.session_state.response = None
+
+if "df" not in st.session_state:
+    st.session_state.df = None
+
+if "chart_type" not in st.session_state:
+    st.session_state.chart_type = "KPI"
+
+
+# =====================================================
+# BACKGROUND
 # =====================================================
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
@@ -38,14 +57,6 @@ st.markdown(f"""
 textarea {{
     background-color: rgba(0,0,0,0.6) !important;
     color: white !important;
-}}
-
-div[data-testid="stButton"] button {{
-    border-radius: 20px;
-    padding: 6px 14px;
-    font-size: 13px;
-    background-color: #1f2937;
-    color: white;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -86,18 +97,6 @@ st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
 
 
 # =====================================================
-# SESSION STATE
-# =====================================================
-if "user_query" not in st.session_state:
-    st.session_state.user_query = ""
-
-if "mode" not in st.session_state:
-    st.session_state.mode = "summarize"
-
-selected_query = None
-
-
-# =====================================================
 # MODE SWITCH
 # =====================================================
 col1, col2 = st.columns([1, 1])
@@ -109,6 +108,9 @@ with col1:
 with col2:
     if st.button("✨ Suggest"):
         st.session_state.mode = "suggest"
+
+
+selected_query = None
 
 
 # =====================================================
@@ -134,7 +136,7 @@ if st.session_state.mode == "summarize":
 
     with c4:
         if st.button("Store Sales"):
-            selected_query = "Show revenue distribution by store as a pie chart"
+            selected_query = "Show revenue distribution by store as a bar chart"
 
     with c5:
         if st.button("Daily Transactions"):
@@ -152,11 +154,11 @@ else:
         "",
         [
             "Select...",
-            "Compare metadata from sales_fact and customer_dim",
             "List top 5 customers by total purchase value",
-            "What is the average order value overall?",
-            "Show total number of transactions completed today",
-            "Which product category has the highest sales?"
+            "What is the average order value?",
+            "Total transactions today",
+            "Highest selling product category",
+            "Customer count by region"
         ]
     )
 
@@ -165,7 +167,7 @@ else:
 
 
 # =====================================================
-# INPUT
+# INPUT BOX
 # =====================================================
 if selected_query:
     st.session_state.user_query = selected_query
@@ -180,114 +182,40 @@ run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# MEASURE DETECTION
+# VISUALIZATION FUNCTION (🔥 NO RESET)
 # =====================================================
-def detect_measure_label(columns):
-    text = " ".join(columns).lower()
-    if "revenue" in text or "sales" in text:
-        return "₹"
-    elif "amount" in text:
-        return "$"
-    return "Value"
-
-
-# =====================================================
-# VISUALIZATION CONTROL
-# =====================================================
-def should_show_visualization(df):
-    return st.session_state.mode == "summarize" and df.shape[1] == 2
-
-
-def auto_visualize(df):
+def show_visualization(df):
 
     col1, col2 = df.columns
-    measure = detect_measure_label(df.columns)
 
-    chart_type = st.selectbox(
+    st.markdown("### 📈 Visualization")
+
+    chart = st.selectbox(
         "Choose Visualization",
-        ["KPI", "Bar Chart", "Pie Chart", "Area Chart"]
+        ["KPI", "Bar Chart", "Pie Chart", "Area Chart"],
+        key="chart_selector"
     )
 
-    if chart_type == "KPI":
-        total = df[col2].sum()
-        st.metric(f"{col2} ({measure})", f"{total:,.2f}")
+    st.session_state.chart_type = chart
 
-    elif chart_type == "Pie Chart":
+    if chart == "KPI":
+        total = df[col2].sum()
+        st.metric("Total Value ($)", f"${total:,.2f}")
+
+    elif chart == "Bar Chart":
+        st.bar_chart(df.set_index(col1))
+
+    elif chart == "Pie Chart":
         fig, ax = plt.subplots()
         ax.pie(df[col2], labels=df[col1], autopct='%1.1f%%')
         st.pyplot(fig)
 
-    elif chart_type == "Area Chart":
+    elif chart == "Area Chart":
         st.area_chart(df.set_index(col1))
 
-    else:
-        st.bar_chart(df.set_index(col1))
-
 
 # =====================================================
-# RESPONSE RENDERER
-# =====================================================
-def render_response(response):
-
-    try:
-        start = response.find("{")
-        end = response.rfind("}") + 1
-        parsed = json.loads(response[start:end])
-
-        if parsed.get("type") == "table":
-            df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
-
-            measure = detect_measure_label(df.columns)
-            st.subheader(f"📊 Data ({measure})")
-            st.dataframe(df)
-
-            if should_show_visualization(df):
-                st.subheader("📈 Visualization")
-                auto_visualize(df)
-
-        elif parsed.get("type") == "list":
-            st.subheader("📌 Insights")
-            for item in parsed["items"]:
-                st.markdown(f"- {item}")
-
-        elif parsed.get("type") == "text":
-            st.subheader("🧠 Summary")
-            st.write(parsed["content"])
-
-    except:
-        st.write(response)
-
-
-# =====================================================
-# PDF FORMATTER
-# =====================================================
-def format_pdf_content(response):
-
-    try:
-        start = response.find("{")
-        end = response.rfind("}") + 1
-        parsed = json.loads(response[start:end])
-
-        if parsed.get("type") == "table":
-            return "\n".join(
-                [" | ".join(parsed["columns"])] +
-                [" | ".join(map(str, row)) for row in parsed["data"]]
-            )
-
-        elif parsed.get("type") == "list":
-            return "\n".join(parsed["items"])
-
-        elif parsed.get("type") == "text":
-            return parsed["content"]
-
-    except:
-        pass
-
-    return response
-
-
-# =====================================================
-# RUN ANALYSIS
+# RUN ANALYSIS (🔥 STORE RESULT)
 # =====================================================
 if run_clicked:
 
@@ -298,9 +226,9 @@ if run_clicked:
         with st.spinner("Running Multi-Agent System..."):
 
             try:
-                app = get_supervisor_app()
+                supervisor_app = get_supervisor_app()
 
-                result = app.invoke({
+                result = supervisor_app.invoke({
                     "messages": [HumanMessage(content=user_query)],
                     "step": 0
                 })
@@ -313,39 +241,85 @@ if run_clicked:
                         response = msg.content
                         break
 
-                st.success("Analysis completed ✅")
-                render_response(response)
-
-                # ================= PDF =================
-                def clean_text(text):
-                    text = unicodedata.normalize("NFKD", text)
-                    return text.encode("latin-1", "ignore").decode("latin-1")
-
-                pdf = FPDF()
-                pdf.add_page()
-
-                pdf.set_font("Arial", "B", 14)
-                pdf.cell(0, 10, "Database Analysis Report", ln=True)
-
-                pdf.ln(5)
-                pdf.set_font("Arial", "B", 12)
-                pdf.cell(0, 8, "Query:", ln=True)
-
-                pdf.set_font("Arial", size=12)
-                pdf.multi_cell(0, 8, clean_text(user_query))
-
-                pdf.ln(5)
-                pdf.cell(0, 8, "Summary:", ln=True)
-                pdf.multi_cell(0, 8, clean_text(format_pdf_content(response)))
-
-                pdf_bytes = pdf.output(dest="S").encode("latin-1")
-
-                st.download_button(
-                    "📄 Download Report",
-                    data=pdf_bytes,
-                    file_name="analysis_report.pdf"
-                )
+                # 🔥 STORE RESPONSE
+                st.session_state.response = response
 
             except Exception as e:
                 st.error("Agent failed ❌")
                 st.exception(e)
+
+
+# =====================================================
+# DISPLAY RESULT (🔥 NO RESET)
+# =====================================================
+if st.session_state.response:
+
+    response = st.session_state.response
+
+    try:
+        start = response.find("{")
+        end = response.rfind("}") + 1
+        parsed = json.loads(response[start:end])
+
+        if parsed.get("type") == "table":
+
+            df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
+            st.session_state.df = df
+
+            st.subheader("📊 Data ($)")
+            st.dataframe(df)
+
+            # 🔥 ONLY SUMMARIZE SHOWS VISUAL
+            if st.session_state.mode == "summarize":
+                show_visualization(df)
+
+        elif parsed.get("type") == "list":
+            for item in parsed["items"]:
+                st.markdown(f"- {item}")
+
+        elif parsed.get("type") == "text":
+            st.write(parsed["content"])
+
+    except:
+        st.write(response)
+
+
+# =====================================================
+# PDF DOWNLOAD (UNCHANGED)
+# =====================================================
+if st.session_state.response:
+
+    def clean_text(text):
+        text = unicodedata.normalize("NFKD", text)
+        return text.encode("latin-1", "ignore").decode("latin-1")
+
+    pdf = FPDF()
+    pdf.add_page()
+
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, "Database Analysis Report", ln=True)
+
+    pdf.ln(5)
+
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "Query:", ln=True)
+
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 8, clean_text(st.session_state.user_query))
+
+    pdf.ln(5)
+
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "Summary:", ln=True)
+
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 8, clean_text(st.session_state.response))
+
+    pdf_bytes = pdf.output(dest="S").encode("latin-1")
+
+    st.download_button(
+        label="📄 Download Report",
+        data=pdf_bytes,
+        file_name="analysis_report.pdf",
+        mime="application/pdf"
+    )
