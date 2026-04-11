@@ -112,7 +112,7 @@ with col2:
 
 
 # =====================================================
-# SUMMARIZE (WITH VISUALIZATION)
+# SUMMARIZE OPTIONS
 # =====================================================
 if st.session_state.mode == "summarize":
 
@@ -126,7 +126,7 @@ if st.session_state.mode == "summarize":
 
     with c2:
         if st.button("Monthly Trend"):
-            selected_query = "Show monthly sales trend as a line chart"
+            selected_query = "Show monthly sales trend as a bar chart"
 
     with c3:
         if st.button("Top Products"):
@@ -134,15 +134,15 @@ if st.session_state.mode == "summarize":
 
     with c4:
         if st.button("Store Sales"):
-            selected_query = "Show revenue distribution by store as a bar chart"
+            selected_query = "Show revenue distribution by store as a pie chart"
 
     with c5:
         if st.button("Daily Transactions"):
-            selected_query = "Show daily transaction count trend as a line chart"
+            selected_query = "Show daily transaction count as a bar chart"
 
 
 # =====================================================
-# SUGGEST (NO VISUALIZATION)
+# SUGGEST OPTIONS
 # =====================================================
 else:
 
@@ -165,7 +165,7 @@ else:
 
 
 # =====================================================
-# INPUT BOX
+# INPUT
 # =====================================================
 if selected_query:
     st.session_state.user_query = selected_query
@@ -180,26 +180,45 @@ run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
+# MEASURE DETECTION
+# =====================================================
+def detect_measure_label(columns):
+    text = " ".join(columns).lower()
+    if "revenue" in text or "sales" in text:
+        return "₹"
+    elif "amount" in text:
+        return "$"
+    return "Value"
+
+
+# =====================================================
 # VISUALIZATION CONTROL
 # =====================================================
-def should_show_visualization(user_query, df):
-    if st.session_state.mode != "summarize":
-        return False
-    return df.shape[1] == 2
+def should_show_visualization(df):
+    return st.session_state.mode == "summarize" and df.shape[1] == 2
 
 
-def auto_visualize(df, user_query):
+def auto_visualize(df):
 
-    query = user_query.lower()
     col1, col2 = df.columns
+    measure = detect_measure_label(df.columns)
 
-    if "pie" in query:
+    chart_type = st.selectbox(
+        "Choose Visualization",
+        ["KPI", "Bar Chart", "Pie Chart", "Area Chart"]
+    )
+
+    if chart_type == "KPI":
+        total = df[col2].sum()
+        st.metric(f"{col2} ({measure})", f"{total:,.2f}")
+
+    elif chart_type == "Pie Chart":
         fig, ax = plt.subplots()
         ax.pie(df[col2], labels=df[col1], autopct='%1.1f%%')
         st.pyplot(fig)
 
-    elif "line" in query:
-        st.line_chart(df.set_index(col1))
+    elif chart_type == "Area Chart":
+        st.area_chart(df.set_index(col1))
 
     else:
         st.bar_chart(df.set_index(col1))
@@ -208,21 +227,23 @@ def auto_visualize(df, user_query):
 # =====================================================
 # RESPONSE RENDERER
 # =====================================================
-def render_response(response, user_query):
+def render_response(response):
 
     try:
         start = response.find("{")
         end = response.rfind("}") + 1
-
         parsed = json.loads(response[start:end])
 
         if parsed.get("type") == "table":
             df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
+
+            measure = detect_measure_label(df.columns)
+            st.subheader(f"📊 Data ({measure})")
             st.dataframe(df)
 
-            if should_show_visualization(user_query, df):
+            if should_show_visualization(df):
                 st.subheader("📈 Visualization")
-                auto_visualize(df, user_query)
+                auto_visualize(df)
 
         elif parsed.get("type") == "list":
             st.subheader("📌 Insights")
@@ -238,32 +259,23 @@ def render_response(response, user_query):
 
 
 # =====================================================
-# PDF FORMATTER (UNCHANGED FEATURE)
+# PDF FORMATTER
 # =====================================================
 def format_pdf_content(response):
 
     try:
         start = response.find("{")
         end = response.rfind("}") + 1
-
         parsed = json.loads(response[start:end])
 
         if parsed.get("type") == "table":
-            columns = parsed["columns"]
-            data = parsed["data"]
-
-            lines = []
-            header = " | ".join(columns)
-            lines.append(header)
-            lines.append("-" * len(header))
-
-            for row in data:
-                lines.append(" | ".join(str(x) for x in row))
-
-            return "\n".join(lines)
+            return "\n".join(
+                [" | ".join(parsed["columns"])] +
+                [" | ".join(map(str, row)) for row in parsed["data"]]
+            )
 
         elif parsed.get("type") == "list":
-            return "\n".join([f"- {item}" for item in parsed["items"]])
+            return "\n".join(parsed["items"])
 
         elif parsed.get("type") == "text":
             return parsed["content"]
@@ -286,14 +298,12 @@ if run_clicked:
         with st.spinner("Running Multi-Agent System..."):
 
             try:
-                supervisor_app = get_supervisor_app()
+                app = get_supervisor_app()
 
-                result = supervisor_app.invoke({
+                result = app.invoke({
                     "messages": [HumanMessage(content=user_query)],
                     "step": 0
                 })
-
-                st.success("Analysis completed ✅")
 
                 messages = result.get("messages", [])
                 response = ""
@@ -303,16 +313,13 @@ if run_clicked:
                         response = msg.content
                         break
 
-                render_response(response, user_query)
+                st.success("Analysis completed ✅")
+                render_response(response)
 
-                # =====================================================
-                # PDF DOWNLOAD (RESTORED 🔥)
-                # =====================================================
+                # ================= PDF =================
                 def clean_text(text):
                     text = unicodedata.normalize("NFKD", text)
                     return text.encode("latin-1", "ignore").decode("latin-1")
-
-                formatted = format_pdf_content(response)
 
                 pdf = FPDF()
                 pdf.add_page()
@@ -321,7 +328,6 @@ if run_clicked:
                 pdf.cell(0, 10, "Database Analysis Report", ln=True)
 
                 pdf.ln(5)
-
                 pdf.set_font("Arial", "B", 12)
                 pdf.cell(0, 8, "Query:", ln=True)
 
@@ -329,20 +335,15 @@ if run_clicked:
                 pdf.multi_cell(0, 8, clean_text(user_query))
 
                 pdf.ln(5)
-
-                pdf.set_font("Arial", "B", 12)
                 pdf.cell(0, 8, "Summary:", ln=True)
-
-                pdf.set_font("Arial", size=12)
-                pdf.multi_cell(0, 8, clean_text(formatted))
+                pdf.multi_cell(0, 8, clean_text(format_pdf_content(response)))
 
                 pdf_bytes = pdf.output(dest="S").encode("latin-1")
 
                 st.download_button(
-                    label="📄 Download Report",
+                    "📄 Download Report",
                     data=pdf_bytes,
-                    file_name="analysis_report.pdf",
-                    mime="application/pdf"
+                    file_name="analysis_report.pdf"
                 )
 
             except Exception as e:
