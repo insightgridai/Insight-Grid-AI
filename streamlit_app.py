@@ -87,7 +87,7 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# INPUT UI (COMPACT MODERN)
+# INPUT UI (INLINE CLEAN STYLE)
 # =====================================================
 st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
 
@@ -99,16 +99,111 @@ if "active_tab" not in st.session_state:
 
 selected_query = None
 
-# ---- SMALL TABS ----
+# ---- INLINE TABS (SIDE BY SIDE TEXT STYLE) ----
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    if st.button("📊 Summarize"):
+    if st.button("📊 Summarize", key="sum_tab"):
         st.session_state.active_tab = "Summarize"
 
 with col2:
-    if st.button("✨ Suggest"):
+    if st.button("✨ Suggest", key="sug_tab"):
         st.session_state.active_tab = "Suggest"
+
+
+# =====================================================
+# SMALL FONT STYLE (IMPORTANT)
+# =====================================================
+st.markdown("""
+<style>
+.small-text {
+    font-size: 14px;
+    color: #d1d5db;
+    margin-bottom: 10px;
+}
+.chip {
+    display: inline-block;
+    padding: 6px 12px;
+    margin: 4px;
+    border-radius: 20px;
+    background-color: rgba(255,255,255,0.08);
+    color: #facc15;
+    cursor: pointer;
+}
+.chip:hover {
+    background-color: rgba(37,99,235,0.6);
+    color: white;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+# =====================================================
+# SUMMARIZE OPTIONS (INLINE TEXT CHIPS)
+# =====================================================
+if st.session_state.active_tab == "Summarize":
+
+    st.markdown('<div class="small-text">Summarize Options</div>', unsafe_allow_html=True)
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    with col1:
+        if st.button("Revenue", key="rev"):
+            selected_query = "Summarize total revenue"
+
+    with col2:
+        if st.button("Monthly", key="mon"):
+            selected_query = "Monthly sales trend"
+
+    with col3:
+        if st.button("Avg Order", key="avg"):
+            selected_query = "Average order value"
+
+    with col4:
+        if st.button("Top Products", key="top"):
+            selected_query = "Top products by revenue"
+
+    with col5:
+        if st.button("Region", key="reg"):
+            selected_query = "Revenue by region"
+
+
+# =====================================================
+# SUGGEST (CLEAN DROPDOWN)
+# =====================================================
+elif st.session_state.active_tab == "Suggest":
+
+    st.markdown('<div class="small-text">Suggestions</div>', unsafe_allow_html=True)
+
+    option = st.selectbox(
+        "",
+        [
+            "Select...",
+            "Compare metadata from sales_fact and customer_dim",
+            "Show total revenue by region",
+            "Top 5 customers by sales",
+            "Monthly sales trend",
+            "Product-wise revenue distribution",
+        ]
+    )
+
+    if option != "Select...":
+        selected_query = option
+
+
+# ---- UPDATE INPUT ----
+if selected_query:
+    st.session_state.user_query = selected_query
+
+
+# ---- INPUT BOX ----
+user_query = st.text_area(
+    "",
+    value=st.session_state.user_query,
+    placeholder="Ask your data question..."
+)
+
+run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
