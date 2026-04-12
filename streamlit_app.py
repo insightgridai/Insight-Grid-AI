@@ -4,6 +4,7 @@ import json
 import pandas as pd
 from fpdf import FPDF
 import matplotlib.pyplot as plt
+import re
 
 from db.connection import get_db_connection
 from langchain_core.messages import HumanMessage
@@ -17,7 +18,7 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND (FIXED PROPERLY)
+# BACKGROUND (UNCHANGED)
 # =====================================================
 def get_base64_image(image_path):
     try:
@@ -41,7 +42,7 @@ st.markdown(f"""
 
 
 # =====================================================
-# HEADER
+# HEADER (UNCHANGED)
 # =====================================================
 col1, col2 = st.columns([6, 2])
 
@@ -65,7 +66,7 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# SESSION STATE
+# SESSION STATE (UNCHANGED)
 # =====================================================
 if "mode" not in st.session_state:
     st.session_state.mode = "summarize"
@@ -81,26 +82,19 @@ if "last_response" not in st.session_state:
 
 
 # =====================================================
-# DATA ENGINE
+# 🔥 TABS INSTEAD OF BUTTONS (ONLY CHANGE)
 # =====================================================
-st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
-
-col1, col2 = st.columns(2)
-
-if col1.button("📊 Summarize"):
-    st.session_state.mode = "summarize"
-
-if col2.button("✨ Suggest"):
-    st.session_state.mode = "suggest"
-
+tab1, tab2 = st.tabs(["📊 Summarize", "✨ Suggest"])
 
 selected_query = None
 
 
 # =====================================================
-# SUMMARIZE OPTIONS
+# SUMMARIZE TAB
 # =====================================================
-if st.session_state.mode == "summarize":
+with tab1:
+
+    st.session_state.mode = "summarize"
 
     st.markdown("### 📊 Summarize Options")
 
@@ -123,9 +117,11 @@ if st.session_state.mode == "summarize":
 
 
 # =====================================================
-# SUGGEST
+# SUGGEST TAB
 # =====================================================
-else:
+with tab2:
+
+    st.session_state.mode = "suggest"
 
     option = st.selectbox("", [
         "Select...",
@@ -140,7 +136,7 @@ else:
 
 
 # =====================================================
-# INPUT
+# INPUT (UNCHANGED)
 # =====================================================
 if selected_query:
     st.session_state.user_query = selected_query
@@ -151,22 +147,29 @@ run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# KPI
+# KPI (UPDATED LABEL ONLY)
 # =====================================================
 def show_kpis(df):
+
     num_cols = df.select_dtypes(include="number").columns
     if len(num_cols) == 0:
         return
 
     col = num_cols[-1]
 
-    st.metric("Total", f"{df[col].sum():,.0f}")
-    st.metric("Avg", f"{df[col].mean():,.0f}")
-    st.metric("Max", f"{df[col].max():,.0f}")
+    # 🔥 detect %
+    if "percent" in col.lower():
+        suffix = "%"
+    else:
+        suffix = "$"
+
+    st.metric("Total", f"{df[col].sum():,.0f} {suffix}")
+    st.metric("Avg", f"{df[col].mean():,.0f} {suffix}")
+    st.metric("Max", f"{df[col].max():,.0f} {suffix}")
 
 
 # =====================================================
-# VISUALIZATION
+# VISUALIZATION (UNCHANGED)
 # =====================================================
 def show_visualization(df):
 
@@ -198,19 +201,52 @@ def show_visualization(df):
 
 
 # =====================================================
+# 🔥 PARSING FIX (ONLY IMPORTANT FIX)
+# =====================================================
+def extract_json(response):
+
+    match = re.search(r"\{.*\}", response, re.DOTALL)
+
+    if not match:
+        return None
+
+    json_str = match.group(0)
+
+    json_str = json_str.replace("'", '"')
+    json_str = re.sub(r",\s*}", "}", json_str)
+    json_str = re.sub(r",\s*]", "]", json_str)
+
+    return json_str
+
+
+# =====================================================
 # RESPONSE HANDLER (FIXED)
 # =====================================================
 def render_response(response):
 
     try:
-        start = response.find("{")
-        end = response.rfind("}") + 1
+        json_str = extract_json(response)
 
-        parsed = json.loads(response[start:end])
+        if not json_str:
+            raise ValueError("Invalid JSON")
 
-        if parsed["type"] == "table":
+        parsed = json.loads(json_str)
+
+        if parsed.get("type") == "table":
 
             df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
+
+            # 🔥 COLUMN LABEL FIX
+            new_cols = []
+            for col in df.columns:
+                if "percent" in col.lower():
+                    new_cols.append(f"{col} (%)")
+                elif "revenue" in col.lower() or "value" in col.lower():
+                    new_cols.append(f"{col} ($)")
+                else:
+                    new_cols.append(col)
+
+            df.columns = new_cols
 
             st.session_state.last_df = df
             st.session_state.last_response = response
@@ -218,12 +254,12 @@ def render_response(response):
             st.markdown("### 📊 Data")
             st.dataframe(df)
 
-            # ✅ ONLY FOR SUMMARIZE
+            # 🔥 ONLY summarize → visualization
             if st.session_state.mode == "summarize":
                 show_kpis(df)
                 show_visualization(df)
 
-        elif parsed["type"] == "text":
+        elif parsed.get("type") == "text":
             st.success(parsed["content"])
 
     except:
@@ -232,11 +268,11 @@ def render_response(response):
 
 
 # =====================================================
-# RUN ANALYSIS
+# RUN ANALYSIS (UNCHANGED)
 # =====================================================
 if run_clicked:
 
-    st.session_state.last_df = None  # prevent duplicate
+    st.session_state.last_df = None
 
     with st.spinner("Running Multi-Agent System..."):
 
@@ -256,7 +292,7 @@ if run_clicked:
 
 
 # =====================================================
-# KEEP STATE (FIXED - NO DUPLICATE)
+# KEEP STATE (UNCHANGED)
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
@@ -269,7 +305,7 @@ if st.session_state.last_df is not None and not run_clicked:
 
 
 # =====================================================
-# DOWNLOAD REPORT
+# DOWNLOAD REPORT (UNCHANGED)
 # =====================================================
 if st.session_state.last_response:
 
