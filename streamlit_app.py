@@ -17,7 +17,7 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND (FIXED PROPERLY)
+# BACKGROUND
 # =====================================================
 def get_base64_image(image_path):
     try:
@@ -28,14 +28,81 @@ def get_base64_image(image_path):
 
 bg_image = get_base64_image("assets/backgroud6.jfif")
 
+
+# =====================================================
+# 🔥 POWER BI UI STYLE
+# =====================================================
 st.markdown(f"""
 <style>
+
 .stApp {{
-    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)),
+    background: linear-gradient(rgba(0,0,0,0.75), rgba(0,0,0,0.85)),
                 url("data:image/jpg;base64,{bg_image}");
     background-size: cover;
     background-position: center;
 }}
+
+/* Tabs */
+.stTabs [data-baseweb="tab"] {{
+    font-size: 18px;
+    padding: 10px;
+    border-radius: 10px;
+    background-color: rgba(255,255,255,0.05);
+}}
+
+.stTabs [aria-selected="true"] {{
+    background: linear-gradient(90deg, #6366f1, #8b5cf6);
+    color: white;
+}}
+
+/* Cards */
+.card {{
+    padding: 15px;
+    border-radius: 15px;
+    background: rgba(255,255,255,0.05);
+    transition: 0.3s;
+    text-align: center;
+}}
+
+.card:hover {{
+    transform: scale(1.05);
+    background: rgba(99,102,241,0.2);
+}}
+
+/* KPI */
+[data-testid="stMetric"] {{
+    background: rgba(255,255,255,0.08);
+    padding: 20px;
+    border-radius: 15px;
+    transition: 0.3s;
+}}
+
+[data-testid="stMetric"]:hover {{
+    transform: scale(1.05);
+}}
+
+/* Buttons */
+div[data-testid="stButton"] button {{
+    border-radius: 20px;
+    background: linear-gradient(90deg, #6366f1, #8b5cf6);
+    color: white;
+    transition: 0.3s;
+}}
+
+div[data-testid="stButton"] button:hover {{
+    transform: scale(1.05);
+}}
+
+/* Fade animation */
+.fade-in {{
+    animation: fadeIn 0.6s ease-in;
+}}
+
+@keyframes fadeIn {{
+    from {{ opacity: 0; transform: translateY(10px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
+}}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -47,8 +114,10 @@ col1, col2 = st.columns([6, 2])
 
 with col1:
     st.markdown("""
+    <div class="fade-in">
     <h2>🤖 Insight Grid AI</h2>
     <p style="color:#9ca3af;">Where Data, Agents, and Decisions Connect</p>
+    </div>
     """, unsafe_allow_html=True)
 
 with col2:
@@ -81,51 +150,44 @@ if "last_response" not in st.session_state:
 
 
 # =====================================================
-# DATA ENGINE
+# 🔥 TABS (POWER BI STYLE)
 # =====================================================
-st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
-
-col1, col2 = st.columns(2)
-
-if col1.button("📊 Summarize"):
-    st.session_state.mode = "summarize"
-
-if col2.button("✨ Suggest"):
-    st.session_state.mode = "suggest"
-
+tab1, tab2 = st.tabs(["📊 Summarize", "✨ Suggest"])
 
 selected_query = None
 
 
 # =====================================================
-# SUMMARIZE OPTIONS
+# SUMMARIZE TAB
 # =====================================================
-if st.session_state.mode == "summarize":
+with tab1:
 
-    st.markdown("### 📊 Summarize Options")
+    st.markdown("### ⚡ Quick Insights")
 
     c1, c2, c3, c4, c5 = st.columns(5)
 
-    if c1.button("Region Revenue"):
+    if c1.button("📍 Region Revenue"):
         selected_query = "Show total revenue by region as a pie chart"
 
-    if c2.button("Monthly Trend"):
+    if c2.button("📅 Monthly Trend"):
         selected_query = "Show monthly sales trend"
 
-    if c3.button("Top Products"):
+    if c3.button("🏆 Top Products"):
         selected_query = "Show top 5 products by revenue as a bar chart"
 
-    if c4.button("Store Sales"):
+    if c4.button("🏬 Store Sales"):
         selected_query = "Show revenue by store as a bar chart"
 
-    if c5.button("Daily Transactions"):
+    if c5.button("📈 Daily Txn"):
         selected_query = "Show daily transaction count"
 
 
 # =====================================================
-# SUGGEST
+# SUGGEST TAB
 # =====================================================
-else:
+with tab2:
+
+    st.markdown("### 🤖 Smart Suggestions")
 
     option = st.selectbox("", [
         "Select...",
@@ -145,24 +207,27 @@ else:
 if selected_query:
     st.session_state.user_query = selected_query
 
-user_query = st.text_area("", value=st.session_state.user_query)
+user_query = st.text_area("Ask your data question...", value=st.session_state.user_query)
 
-run_clicked = st.button("Run Analysis")
+run_clicked = st.button("🚀 Run Analysis")
 
 
 # =====================================================
 # KPI
 # =====================================================
 def show_kpis(df):
+
     num_cols = df.select_dtypes(include="number").columns
     if len(num_cols) == 0:
         return
 
     col = num_cols[-1]
 
-    st.metric("Total", f"{df[col].sum():,.0f}")
-    st.metric("Avg", f"{df[col].mean():,.0f}")
-    st.metric("Max", f"{df[col].max():,.0f}")
+    k1, k2, k3 = st.columns(3)
+
+    k1.metric("💰 Total", f"{df[col].sum():,.0f}")
+    k2.metric("📊 Avg", f"{df[col].mean():,.0f}")
+    k3.metric("🔥 Max", f"{df[col].max():,.0f}")
 
 
 # =====================================================
@@ -179,11 +244,7 @@ def show_visualization(df):
 
     df = df.groupby(label_col)[value_col].sum().reset_index()
 
-    chart = st.selectbox(
-        "Choose Visualization",
-        ["Bar", "Pie", "Area"],
-        key="chart_selector"
-    )
+    chart = st.selectbox("Choose Visualization", ["Bar", "Pie", "Area"])
 
     if chart == "Bar":
         st.bar_chart(df.set_index(label_col))
@@ -198,7 +259,7 @@ def show_visualization(df):
 
 
 # =====================================================
-# RESPONSE HANDLER (FIXED)
+# RESPONSE HANDLER
 # =====================================================
 def render_response(response):
 
@@ -218,8 +279,8 @@ def render_response(response):
             st.markdown("### 📊 Data")
             st.dataframe(df)
 
-            # ✅ ONLY FOR SUMMARIZE
-            if st.session_state.mode == "summarize":
+            # 🔥 ONLY FOR SUMMARIZE
+            if tab1 in st.tabs and st.session_state.mode != "suggest":
                 show_kpis(df)
                 show_visualization(df)
 
@@ -236,9 +297,9 @@ def render_response(response):
 # =====================================================
 if run_clicked:
 
-    st.session_state.last_df = None  # prevent duplicate
+    st.session_state.last_df = None
 
-    with st.spinner("Running Multi-Agent System..."):
+    with st.spinner("🤖 Running AI Agents..."):
 
         app = get_supervisor_app()
 
@@ -256,16 +317,12 @@ if run_clicked:
 
 
 # =====================================================
-# KEEP STATE (FIXED - NO DUPLICATE)
+# KEEP STATE
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
     st.markdown("### 📊 Data")
     st.dataframe(st.session_state.last_df)
-
-    if st.session_state.mode == "summarize":
-        show_kpis(st.session_state.last_df)
-        show_visualization(st.session_state.last_df)
 
 
 # =====================================================
@@ -281,8 +338,4 @@ if st.session_state.last_response:
 
     pdf_bytes = pdf.output(dest="S").encode("latin-1")
 
-    st.download_button(
-        "📄 Download Report",
-        pdf_bytes,
-        "report.pdf"
-    )
+    st.download_button("📄 Download Report", pdf_bytes, "report.pdf")
