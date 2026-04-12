@@ -18,7 +18,7 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND
+# BACKGROUND (RESTORED)
 # =====================================================
 def get_base64_image(image_path):
     try:
@@ -42,7 +42,7 @@ st.markdown(f"""
 
 
 # =====================================================
-# HEADER
+# HEADER (UNCHANGED)
 # =====================================================
 col1, col2 = st.columns([6, 2])
 
@@ -58,17 +58,15 @@ with col2:
             conn = get_db_connection()
             cur = conn.cursor()
             cur.execute("SELECT 1")
-            cur.fetchone()
             st.success("Connection Successful ✅")
-        except Exception as e:
+        except:
             st.error("Connection Failed ❌")
-
 
 st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# SESSION STATE
+# SESSION STATE (FIXED)
 # =====================================================
 if "mode" not in st.session_state:
     st.session_state.mode = "summarize"
@@ -81,6 +79,9 @@ if "last_df" not in st.session_state:
 
 if "last_response" not in st.session_state:
     st.session_state.last_response = ""
+
+if "chart_type" not in st.session_state:
+    st.session_state.chart_type = "Bar"
 
 
 # =====================================================
@@ -129,15 +130,14 @@ if st.session_state.mode == "summarize":
 # SUGGEST
 # =====================================================
 else:
-    option = st.selectbox(
-        "",
-        [
-            "Select...",
-            "Top 5 customers by sales",
-            "Average order value",
-            "Transactions today"
-        ]
-    )
+
+    option = st.selectbox("", [
+        "Select...",
+        "Top 5 customers",
+        "Average order value",
+        "Transactions today"
+    ])
+
     if option != "Select...":
         selected_query = option
 
@@ -154,27 +154,10 @@ run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# 🔥 FIXED PARSER
-# =====================================================
-def safe_json_parse(response):
-    try:
-        start = response.find("{")
-        end = response.rfind("}") + 1
-
-        json_str = response[start:end]
-
-        return json.loads(json_str)
-
-    except Exception as e:
-        st.error("JSON Parsing Failed ❌")
-        st.code(response)
-        return None
-
-
-# =====================================================
-# KPI FIX
+# KPI
 # =====================================================
 def show_kpis(df):
+
     num_cols = df.select_dtypes(include="number").columns
     if len(num_cols) == 0:
         return
@@ -187,7 +170,7 @@ def show_kpis(df):
 
 
 # =====================================================
-# VISUALIZATION FIX
+# VISUALIZATION (STABLE)
 # =====================================================
 def show_visualization(df):
 
@@ -200,7 +183,11 @@ def show_visualization(df):
 
     df = df.groupby(label_col)[value_col].sum().reset_index()
 
-    chart = st.selectbox("Chart", ["Bar", "Pie", "Area"])
+    chart = st.selectbox(
+        "Choose Visualization",
+        ["Bar", "Pie", "Area"],
+        key="chart_selector"
+    )
 
     if chart == "Bar":
         st.bar_chart(df.set_index(label_col))
@@ -215,60 +202,86 @@ def show_visualization(df):
 
 
 # =====================================================
-# RESPONSE
+# RESPONSE HANDLER (FIXED)
 # =====================================================
 def render_response(response):
 
-    parsed = safe_json_parse(response)
+    try:
+        start = response.find("{")
+        end = response.rfind("}") + 1
 
-    if not parsed:
-        return
+        parsed = json.loads(response[start:end])
 
-    if parsed["type"] == "table":
+        if parsed["type"] == "table":
 
-        df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
+            df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
 
-        st.session_state.last_df = df
-        st.session_state.last_response = response
+            st.session_state.last_df = df
+            st.session_state.last_response = response
 
-        st.dataframe(df)
+            st.dataframe(df)
 
-        if st.session_state.mode == "summarize":
-            show_kpis(df)
-            show_visualization(df)
+            if st.session_state.mode == "summarize":
+                show_kpis(df)
+                show_visualization(df)
 
-    elif parsed["type"] == "text":
-        st.success(parsed["content"])
+        elif parsed["type"] == "text":
+            st.success(parsed["content"])
 
-    elif parsed["type"] == "list":
-        for i in parsed["items"]:
-            st.write(i)
+    except:
+        st.error("Parsing error")
+        st.code(response)
 
 
 # =====================================================
-# RUN
+# RUN ANALYSIS (FIXED)
 # =====================================================
 if run_clicked:
 
-    app = get_supervisor_app()
+    with st.spinner("Running Multi-Agent System..."):
 
-    result = app.invoke({
-        "messages": [HumanMessage(content=user_query)],
-        "step": 0
-    })
+        app = get_supervisor_app()
 
-    messages = result.get("messages", [])
+        result = app.invoke({
+            "messages": [HumanMessage(content=user_query)],
+            "step": 0
+        })
 
-    for msg in reversed(messages):
-        if getattr(msg, "type", "") == "ai":
-            render_response(msg.content)
-            break
+        messages = result.get("messages", [])
+
+        for msg in reversed(messages):
+            if getattr(msg, "type", "") == "ai":
+                render_response(msg.content)
+                break
 
 
 # =====================================================
-# KEEP STATE
+# KEEP STATE (IMPORTANT FIX)
 # =====================================================
-if st.session_state.last_df is not None and not run_clicked:
+if st.session_state.last_df is not None:
+
     st.dataframe(st.session_state.last_df)
-    show_kpis(st.session_state.last_df)
-    show_visualization(st.session_state.last_df)
+
+    if st.session_state.mode == "summarize":
+        show_kpis(st.session_state.last_df)
+        show_visualization(st.session_state.last_df)
+
+
+# =====================================================
+# PDF DOWNLOAD (RESTORED)
+# =====================================================
+if st.session_state.last_response:
+
+    pdf = FPDF()
+    pdf.add_page()
+
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 8, st.session_state.last_response)
+
+    pdf_bytes = pdf.output(dest="S").encode("latin-1")
+
+    st.download_button(
+        "📄 Download Report",
+        pdf_bytes,
+        "report.pdf"
+    )
