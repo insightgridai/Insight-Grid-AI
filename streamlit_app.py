@@ -18,7 +18,7 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND (UNCHANGED + SAFE)
+# BACKGROUND
 # =====================================================
 def get_base64_image(image_path):
     try:
@@ -37,32 +37,12 @@ st.markdown(f"""
     background-size: cover;
     background-position: center;
 }}
-
-textarea {{
-    background-color: rgba(0,0,0,0.6) !important;
-    color: white !important;
-}}
-
-div[data-testid="stButton"] button {{
-    border-radius: 20px;
-    padding: 6px 14px;
-    font-size: 13px;
-    background-color: #1f2937;
-    color: white;
-}}
-
-[data-testid="stMetric"] {{
-    background: rgba(255,255,255,0.05);
-    padding: 15px;
-    border-radius: 12px;
-    text-align: center;
-}}
 </style>
 """, unsafe_allow_html=True)
 
 
 # =====================================================
-# HEADER (UNCHANGED)
+# HEADER
 # =====================================================
 col1, col2 = st.columns([6, 2])
 
@@ -79,12 +59,10 @@ with col2:
             cur = conn.cursor()
             cur.execute("SELECT 1")
             cur.fetchone()
-            cur.close()
-            conn.close()
             st.success("Connection Successful ✅")
         except Exception as e:
             st.error("Connection Failed ❌")
-            st.exception(e)
+
 
 st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -112,13 +90,11 @@ st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
-with col1:
-    if st.button("📊 Summarize"):
-        st.session_state.mode = "summarize"
+if col1.button("📊 Summarize"):
+    st.session_state.mode = "summarize"
 
-with col2:
-    if st.button("✨ Suggest"):
-        st.session_state.mode = "suggest"
+if col2.button("✨ Suggest"):
+    st.session_state.mode = "suggest"
 
 
 selected_query = None
@@ -133,46 +109,35 @@ if st.session_state.mode == "summarize":
 
     c1, c2, c3, c4, c5 = st.columns(5)
 
-    with c1:
-        if st.button("Region Revenue"):
-            selected_query = "Show total revenue by region as a pie chart"
+    if c1.button("Region Revenue"):
+        selected_query = "Show total revenue by region as a pie chart"
 
-    with c2:
-        if st.button("Monthly Trend"):
-            selected_query = "Show monthly sales trend"
+    if c2.button("Monthly Trend"):
+        selected_query = "Show monthly sales trend"
 
-    with c3:
-        if st.button("Top Products"):
-            selected_query = "Show top 5 products by revenue as a bar chart"
+    if c3.button("Top Products"):
+        selected_query = "Show top 5 products by revenue as a bar chart"
 
-    with c4:
-        if st.button("Store Sales"):
-            selected_query = "Show revenue by store as a bar chart"
+    if c4.button("Store Sales"):
+        selected_query = "Show revenue by store as a bar chart"
 
-    with c5:
-        if st.button("Daily Transactions"):
-            selected_query = "Show daily transaction count"
+    if c5.button("Daily Transactions"):
+        selected_query = "Show daily transaction count"
 
 
 # =====================================================
 # SUGGEST
 # =====================================================
 else:
-
-    st.markdown("### ✨ Suggestions")
-
     option = st.selectbox(
         "",
         [
             "Select...",
-            "Compare metadata from sales_fact and customer_dim",
-            "List top 5 customers by total purchase value",
-            "What is the average order value overall?",
-            "Show total number of transactions today",
-            "Which product category has highest sales?"
+            "Top 5 customers by sales",
+            "Average order value",
+            "Transactions today"
         ]
     )
-
     if option != "Select...":
         selected_query = option
 
@@ -183,217 +148,127 @@ else:
 if selected_query:
     st.session_state.user_query = selected_query
 
-user_query = st.text_area(
-    "",
-    value=st.session_state.user_query,
-    placeholder="Ask your data question..."
-)
+user_query = st.text_area("", value=st.session_state.user_query)
 
 run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# KPI (FIXED COLUMN DETECTION)
+# 🔥 FIXED PARSER
+# =====================================================
+def safe_json_parse(response):
+    try:
+        start = response.find("{")
+        end = response.rfind("}") + 1
+
+        json_str = response[start:end]
+
+        return json.loads(json_str)
+
+    except Exception as e:
+        st.error("JSON Parsing Failed ❌")
+        st.code(response)
+        return None
+
+
+# =====================================================
+# KPI FIX
 # =====================================================
 def show_kpis(df):
+    num_cols = df.select_dtypes(include="number").columns
+    if len(num_cols) == 0:
+        return
 
-    try:
-        numeric_cols = df.select_dtypes(include=["number"]).columns
+    col = num_cols[-1]
 
-        if len(numeric_cols) == 0:
-            st.warning("No numeric column for KPI")
-            return
-
-        value_col = numeric_cols[-1]
-
-        total = df[value_col].sum()
-        avg = df[value_col].mean()
-        max_val = df[value_col].max()
-
-        col1, col2, col3 = st.columns(3)
-
-        col1.metric("💰 Total", f"${total:,.0f}")
-        col2.metric("📊 Avg", f"${avg:,.0f}")
-        col3.metric("🔥 Max", f"${max_val:,.0f}")
-
-    except:
-        st.warning("KPI error")
+    st.metric("Total", f"${df[col].sum():,.0f}")
+    st.metric("Avg", f"${df[col].mean():,.0f}")
+    st.metric("Max", f"${df[col].max():,.0f}")
 
 
 # =====================================================
-# VISUALIZATION (FIXED ALL ISSUES)
+# VISUALIZATION FIX
 # =====================================================
 def show_visualization(df):
 
-    if len(df.columns) < 2:
+    num_cols = df.select_dtypes(include="number").columns
+    if len(num_cols) == 0:
         return
 
-    numeric_cols = df.select_dtypes(include=["number"]).columns
-    if len(numeric_cols) == 0:
-        st.warning("No numeric data")
-        return
-
-    value_col = numeric_cols[-1]
+    value_col = num_cols[-1]
     label_col = [c for c in df.columns if c != value_col][0]
 
-    show_kpis(df)
+    df = df.groupby(label_col)[value_col].sum().reset_index()
 
-    st.markdown("### 📈 Visualization")
+    chart = st.selectbox("Chart", ["Bar", "Pie", "Area"])
 
-    chart = st.selectbox(
-        "Choose Visualization",
-        ["Bar Chart", "Pie Chart", "Area Chart"],
-        key="chart_selector"
-    )
+    if chart == "Bar":
+        st.bar_chart(df.set_index(label_col))
 
-    chart_df = df[[label_col, value_col]].copy()
-
-    chart_df = chart_df.groupby(label_col)[value_col].sum().reset_index()
-
-    if chart == "Bar Chart":
-        st.bar_chart(chart_df.set_index(label_col))
-
-    elif chart == "Pie Chart":
+    elif chart == "Pie":
         fig, ax = plt.subplots()
-        ax.pie(
-            chart_df[value_col],
-            labels=chart_df[label_col],
-            autopct='%1.1f%%'
-        )
+        ax.pie(df[value_col], labels=df[label_col], autopct='%1.1f%%')
         st.pyplot(fig)
 
-    elif chart == "Area Chart":
-        st.area_chart(chart_df.set_index(label_col))
+    else:
+        st.area_chart(df.set_index(label_col))
 
 
 # =====================================================
-# RESPONSE HANDLER (🔥 FINAL FIX)
+# RESPONSE
 # =====================================================
 def render_response(response):
 
-    try:
-        cleaned = response.strip()
+    parsed = safe_json_parse(response)
 
-        start = cleaned.find("{")
-        end = cleaned.rfind("}") + 1
+    if not parsed:
+        return
 
-        if start == -1 or end == -1:
-            st.write(response)
-            return
+    if parsed["type"] == "table":
 
-        json_str = cleaned[start:end]
-        json_str = json_str.replace("'", '"')
+        df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
 
-        parsed = json.loads(json_str)
+        st.session_state.last_df = df
+        st.session_state.last_response = response
 
-        if parsed.get("type") == "table":
+        st.dataframe(df)
 
-            df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
+        if st.session_state.mode == "summarize":
+            show_kpis(df)
+            show_visualization(df)
 
-            st.session_state.last_df = df
-            st.session_state.last_response = response
+    elif parsed["type"] == "text":
+        st.success(parsed["content"])
 
-            st.markdown("### 📊 Data ($)")
-            st.dataframe(df)
-
-            if st.session_state.mode == "summarize":
-                show_visualization(df)
-
-        elif parsed.get("type") == "list":
-            for item in parsed["items"]:
-                st.markdown(f"- {item}")
-
-        elif parsed.get("type") == "text":
-            st.markdown("### 🧠 Summary")
-            st.success(parsed["content"])
-
-    except:
-        st.error("Parsing error")
-        st.write(response)
+    elif parsed["type"] == "list":
+        for i in parsed["items"]:
+            st.write(i)
 
 
 # =====================================================
-# RUN ANALYSIS (UNCHANGED)
+# RUN
 # =====================================================
 if run_clicked:
 
-    if not user_query.strip():
-        st.warning("Enter a query")
+    app = get_supervisor_app()
 
-    else:
-        with st.spinner("Running Multi-Agent System..."):
+    result = app.invoke({
+        "messages": [HumanMessage(content=user_query)],
+        "step": 0
+    })
 
-            try:
-                app = get_supervisor_app()
+    messages = result.get("messages", [])
 
-                result = app.invoke({
-                    "messages": [HumanMessage(content=user_query)],
-                    "step": 0
-                })
-
-                messages = result.get("messages", [])
-                response = ""
-
-                for msg in reversed(messages):
-                    if getattr(msg, "type", "") == "ai":
-                        response = msg.content
-                        break
-
-                render_response(response)
-
-            except Exception as e:
-                st.error("Error")
-                st.exception(e)
+    for msg in reversed(messages):
+        if getattr(msg, "type", "") == "ai":
+            render_response(msg.content)
+            break
 
 
 # =====================================================
-# KEEP RESULT
+# KEEP STATE
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
-
-    st.markdown("### 📊 Data ($)")
     st.dataframe(st.session_state.last_df)
-
-    if st.session_state.mode == "summarize":
-        show_visualization(st.session_state.last_df)
-
-
-# =====================================================
-# PDF DOWNLOAD (UNCHANGED)
-# =====================================================
-if st.session_state.last_response:
-
-    def clean_text(text):
-        text = unicodedata.normalize("NFKD", text)
-        return text.encode("latin-1", "ignore").decode("latin-1")
-
-    pdf = FPDF()
-    pdf.add_page()
-
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "Database Analysis Report", ln=True)
-
-    pdf.ln(5)
-
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "Query:", ln=True)
-
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 8, clean_text(st.session_state.user_query))
-
-    pdf.ln(5)
-
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "Result:", ln=True)
-
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 8, clean_text(st.session_state.last_response))
-
-    pdf_bytes = pdf.output(dest="S").encode("latin-1")
-
-    st.download_button(
-        label="📄 Download Report",
-        data=pdf_bytes,
-        file_name="analysis_report.pdf",
-        mime="application/pdf"
-    )
+    show_kpis(st.session_state.last_df)
+    show_visualization(st.session_state.last_df)
