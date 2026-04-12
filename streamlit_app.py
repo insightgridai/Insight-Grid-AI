@@ -30,7 +30,7 @@ bg_image = get_base64_image("assets/backgroud6.jfif")
 
 
 # =====================================================
-# 🔥 POWER BI UI STYLE
+# 🎨 UI STYLE (SOFT COLORS FIXED)
 # =====================================================
 st.markdown(f"""
 <style>
@@ -42,65 +42,27 @@ st.markdown(f"""
     background-position: center;
 }}
 
-/* Tabs */
-.stTabs [data-baseweb="tab"] {{
-    font-size: 18px;
-    padding: 10px;
-    border-radius: 10px;
-    background-color: rgba(255,255,255,0.05);
-}}
-
-.stTabs [aria-selected="true"] {{
-    background: linear-gradient(90deg, #6366f1, #8b5cf6);
+/* Summarize buttons - SOFT COLORS */
+div[data-testid="stButton"] button {{
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 13px;
+    background: linear-gradient(90deg, #4f46e5, #6366f1);
     color: white;
-}}
-
-/* Cards */
-.card {{
-    padding: 15px;
-    border-radius: 15px;
-    background: rgba(255,255,255,0.05);
+    border: none;
     transition: 0.3s;
-    text-align: center;
 }}
 
-.card:hover {{
+div[data-testid="stButton"] button:hover {{
+    background: linear-gradient(90deg, #6366f1, #818cf8);
     transform: scale(1.05);
-    background: rgba(99,102,241,0.2);
 }}
 
 /* KPI */
 [data-testid="stMetric"] {{
     background: rgba(255,255,255,0.08);
-    padding: 20px;
-    border-radius: 15px;
-    transition: 0.3s;
-}}
-
-[data-testid="stMetric"]:hover {{
-    transform: scale(1.05);
-}}
-
-/* Buttons */
-div[data-testid="stButton"] button {{
-    border-radius: 20px;
-    background: linear-gradient(90deg, #6366f1, #8b5cf6);
-    color: white;
-    transition: 0.3s;
-}}
-
-div[data-testid="stButton"] button:hover {{
-    transform: scale(1.05);
-}}
-
-/* Fade animation */
-.fade-in {{
-    animation: fadeIn 0.6s ease-in;
-}}
-
-@keyframes fadeIn {{
-    from {{ opacity: 0; transform: translateY(10px); }}
-    to {{ opacity: 1; transform: translateY(0); }}
+    padding: 15px;
+    border-radius: 12px;
 }}
 
 </style>
@@ -114,10 +76,8 @@ col1, col2 = st.columns([6, 2])
 
 with col1:
     st.markdown("""
-    <div class="fade-in">
     <h2>🤖 Insight Grid AI</h2>
     <p style="color:#9ca3af;">Where Data, Agents, and Decisions Connect</p>
-    </div>
     """, unsafe_allow_html=True)
 
 with col2:
@@ -150,44 +110,51 @@ if "last_response" not in st.session_state:
 
 
 # =====================================================
-# 🔥 TABS (POWER BI STYLE)
+# DATA ENGINE
 # =====================================================
-tab1, tab2 = st.tabs(["📊 Summarize", "✨ Suggest"])
+st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
+
+col1, col2 = st.columns(2)
+
+if col1.button("📊 Summarize"):
+    st.session_state.mode = "summarize"
+
+if col2.button("✨ Suggest"):
+    st.session_state.mode = "suggest"
+
 
 selected_query = None
 
 
 # =====================================================
-# SUMMARIZE TAB
+# SUMMARIZE
 # =====================================================
-with tab1:
+if st.session_state.mode == "summarize":
 
     st.markdown("### ⚡ Quick Insights")
 
     c1, c2, c3, c4, c5 = st.columns(5)
 
-    if c1.button("📍 Region Revenue"):
+    if c1.button("Region Revenue"):
         selected_query = "Show total revenue by region as a pie chart"
 
-    if c2.button("📅 Monthly Trend"):
+    if c2.button("Monthly Trend"):
         selected_query = "Show monthly sales trend"
 
-    if c3.button("🏆 Top Products"):
+    if c3.button("Top Products"):
         selected_query = "Show top 5 products by revenue as a bar chart"
 
-    if c4.button("🏬 Store Sales"):
+    if c4.button("Store Sales"):
         selected_query = "Show revenue by store as a bar chart"
 
-    if c5.button("📈 Daily Txn"):
+    if c5.button("Daily Transactions"):
         selected_query = "Show daily transaction count"
 
 
 # =====================================================
-# SUGGEST TAB
+# SUGGEST (FIXED)
 # =====================================================
-with tab2:
-
-    st.markdown("### 🤖 Smart Suggestions")
+else:
 
     option = st.selectbox("", [
         "Select...",
@@ -223,11 +190,11 @@ def show_kpis(df):
 
     col = num_cols[-1]
 
-    k1, k2, k3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
 
-    k1.metric("💰 Total", f"{df[col].sum():,.0f}")
-    k2.metric("📊 Avg", f"{df[col].mean():,.0f}")
-    k3.metric("🔥 Max", f"{df[col].max():,.0f}")
+    c1.metric("Total", f"{df[col].sum():,.0f}")
+    c2.metric("Avg", f"{df[col].mean():,.0f}")
+    c3.metric("Max", f"{df[col].max():,.0f}")
 
 
 # =====================================================
@@ -259,15 +226,19 @@ def show_visualization(df):
 
 
 # =====================================================
-# RESPONSE HANDLER
+# 🔥 RESPONSE HANDLER (MAIN FIX)
 # =====================================================
 def render_response(response):
 
     try:
+        # 🔥 CLEAN JSON (handles trailing garbage)
         start = response.find("{")
         end = response.rfind("}") + 1
+        json_str = response[start:end]
 
-        parsed = json.loads(response[start:end])
+        json_str = json_str.replace("'", '"')
+
+        parsed = json.loads(json_str)
 
         if parsed["type"] == "table":
 
@@ -279,15 +250,15 @@ def render_response(response):
             st.markdown("### 📊 Data")
             st.dataframe(df)
 
-            # 🔥 ONLY FOR SUMMARIZE
-            if tab1 in st.tabs and st.session_state.mode != "suggest":
+            # ✅ ONLY summarize → show charts
+            if st.session_state.mode == "summarize":
                 show_kpis(df)
                 show_visualization(df)
 
         elif parsed["type"] == "text":
             st.success(parsed["content"])
 
-    except:
+    except Exception as e:
         st.error("Parsing error")
         st.code(response)
 
@@ -299,21 +270,26 @@ if run_clicked:
 
     st.session_state.last_df = None
 
-    with st.spinner("🤖 Running AI Agents..."):
+    with st.spinner("Running Multi-Agent System..."):
 
-        app = get_supervisor_app()
+        try:
+            app = get_supervisor_app()
 
-        result = app.invoke({
-            "messages": [HumanMessage(content=user_query)],
-            "step": 0
-        })
+            result = app.invoke({
+                "messages": [HumanMessage(content=user_query)],
+                "step": 0
+            })
 
-        messages = result.get("messages", [])
+            messages = result.get("messages", [])
 
-        for msg in reversed(messages):
-            if getattr(msg, "type", "") == "ai":
-                render_response(msg.content)
-                break
+            for msg in reversed(messages):
+                if getattr(msg, "type", "") == "ai":
+                    render_response(msg.content)
+                    break
+
+        except Exception as e:
+            st.error("Error")
+            st.exception(e)
 
 
 # =====================================================
@@ -323,6 +299,10 @@ if st.session_state.last_df is not None and not run_clicked:
 
     st.markdown("### 📊 Data")
     st.dataframe(st.session_state.last_df)
+
+    if st.session_state.mode == "summarize":
+        show_kpis(st.session_state.last_df)
+        show_visualization(st.session_state.last_df)
 
 
 # =====================================================
