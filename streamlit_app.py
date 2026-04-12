@@ -30,8 +30,8 @@ bg_image = get_base64_image("assets/backgroud6.jfif")
 st.markdown(f"""
 <style>
 .stApp {{
-    background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
-    url("data:image/png;base64,{bg_image}");
+    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)),
+    background-image: url("data:image/png;base64,{bg_image}");
     background-size: cover;
 }}
 
@@ -46,6 +46,13 @@ div[data-testid="stButton"] button {{
     font-size: 13px;
     background-color: #1f2937;
     color: white;
+}}
+
+[data-testid="stMetric"] {{
+    background: rgba(255,255,255,0.05);
+    padding: 15px;
+    border-radius: 12px;
+    text-align: center;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -183,7 +190,30 @@ run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# VISUALIZATION (FIXED)
+# KPI CARDS
+# =====================================================
+def show_kpis(df):
+
+    try:
+        value_col = df.columns[-1]
+        df[value_col] = pd.to_numeric(df[value_col], errors="coerce")
+
+        total = df[value_col].sum()
+        avg = df[value_col].mean()
+        max_val = df[value_col].max()
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric("💰 Total Revenue", f"${total:,.0f}")
+        col2.metric("📊 Avg Value", f"${avg:,.0f}")
+        col3.metric("🔥 Max Value", f"${max_val:,.0f}")
+
+    except:
+        st.warning("KPI not available")
+
+
+# =====================================================
+# VISUALIZATION
 # =====================================================
 def show_visualization(df):
 
@@ -196,36 +226,33 @@ def show_visualization(df):
 
     df[value_col] = pd.to_numeric(df[value_col], errors="coerce")
 
+    show_kpis(df)
+
     st.markdown("### 📈 Visualization")
 
     chart = st.selectbox(
         "Choose Visualization",
-        ["KPI", "Bar Chart", "Pie Chart", "Area Chart"],
+        ["Bar Chart", "Pie Chart", "Area Chart"],
         key="chart_selector"
     )
 
-    if chart == "KPI":
-        total = df[value_col].sum()
-        st.metric("Total Revenue ($)", f"${total:,.2f}")
+    chart_df = df[[label_col, value_col]].copy()
+    chart_df = chart_df.sort_values(by=value_col, ascending=False)
 
-    elif chart == "Bar Chart":
-        chart_df = df[[label_col, value_col]].copy()
-        chart_df = chart_df.sort_values(by=value_col, ascending=False)
+    if chart == "Bar Chart":
         st.bar_chart(chart_df.set_index(label_col))
 
     elif chart == "Pie Chart":
-        chart_df = df[[label_col, value_col]].copy()
         fig, ax = plt.subplots()
         ax.pie(chart_df[value_col], labels=chart_df[label_col], autopct='%1.1f%%')
         st.pyplot(fig)
 
     elif chart == "Area Chart":
-        chart_df = df[[label_col, value_col]].copy()
         st.area_chart(chart_df.set_index(label_col))
 
 
 # =====================================================
-# RESPONSE HANDLER (FIXED JSON PARSE)
+# RESPONSE HANDLER
 # =====================================================
 def render_response(response):
 
@@ -236,7 +263,7 @@ def render_response(response):
 
         json_str = cleaned[start:end]
 
-        # 🔥 FIX SINGLE QUOTES
+        # FIX JSON
         json_str = json_str.replace("'", '"')
 
         parsed = json.loads(json_str)
@@ -261,7 +288,7 @@ def render_response(response):
         elif parsed.get("type") == "text":
             st.write(parsed["content"])
 
-    except Exception as e:
+    except:
         st.error("Parsing error")
         st.write(response)
 
@@ -301,7 +328,7 @@ if run_clicked:
 
 
 # =====================================================
-# KEEP RESULT (NO RESET)
+# KEEP RESULT
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
