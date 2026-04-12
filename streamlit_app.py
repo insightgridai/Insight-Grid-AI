@@ -17,23 +17,27 @@ from agents.supervisor_agent import get_supervisor_app
 st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
-
 # =====================================================
-# BACKGROUND
+# BACKGROUND (FIXED)
 # =====================================================
 def get_base64_image(image_path):
-    with open(image_path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode()
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except:
+        return ""
 
 
+# ⚠️ USE EXACT FILE NAME FROM YOUR REPO
 bg_image = get_base64_image("assets/backgroud6.jfif")
 
 st.markdown(f"""
 <style>
 .stApp {{
     background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)),
-    background-image: url("data:image/png;base64,{bg_image}");
+    url("data:image/png;base64,{bg_image}");
     background-size: cover;
+    background-position: center;
 }}
 
 textarea {{
@@ -57,6 +61,7 @@ div[data-testid="stButton"] button {{
 }}
 </style>
 """, unsafe_allow_html=True)
+
 
 # =====================================================
 # HEADER (UNCHANGED)
@@ -87,7 +92,7 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# SESSION STATE (UNCHANGED)
+# SESSION STATE
 # =====================================================
 if "mode" not in st.session_state:
     st.session_state.mode = "summarize"
@@ -101,9 +106,12 @@ if "last_df" not in st.session_state:
 if "last_response" not in st.session_state:
     st.session_state.last_response = ""
 
+if "chart_type" not in st.session_state:
+    st.session_state.chart_type = "Bar Chart"
+
 
 # =====================================================
-# DATA ENGINE (UNCHANGED)
+# DATA ENGINE
 # =====================================================
 st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
 
@@ -122,7 +130,7 @@ selected_query = None
 
 
 # =====================================================
-# SUMMARIZE OPTIONS (UNCHANGED)
+# SUMMARIZE OPTIONS
 # =====================================================
 if st.session_state.mode == "summarize":
 
@@ -152,7 +160,7 @@ if st.session_state.mode == "summarize":
 
 
 # =====================================================
-# SUGGEST (UNCHANGED)
+# SUGGEST
 # =====================================================
 else:
 
@@ -175,7 +183,7 @@ else:
 
 
 # =====================================================
-# INPUT (UNCHANGED)
+# INPUT
 # =====================================================
 if selected_query:
     st.session_state.user_query = selected_query
@@ -190,10 +198,9 @@ run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# KPI + VISUALIZATION (UNCHANGED)
+# KPI
 # =====================================================
 def show_kpis(df):
-
     try:
         value_col = df.columns[-1]
         df[value_col] = pd.to_numeric(df[value_col], errors="coerce")
@@ -204,18 +211,20 @@ def show_kpis(df):
 
         col1, col2, col3 = st.columns(3)
 
-        col1.metric("💰 Total Revenue", f"${total:,.0f}")
-        col2.metric("📊 Avg Value", f"${avg:,.0f}")
-        col3.metric("🔥 Max Value", f"${max_val:,.0f}")
+        col1.metric("💰 Total", f"${total:,.0f}")
+        col2.metric("📊 Avg", f"${avg:,.0f}")
+        col3.metric("🔥 Max", f"${max_val:,.0f}")
 
     except:
-        st.warning("KPI not available")
+        st.warning("KPI error")
 
 
+# =====================================================
+# VISUALIZATION (FIXED COMPLETELY)
+# =====================================================
 def show_visualization(df):
 
     if len(df.columns) < 2:
-        st.warning("Not enough data")
         return
 
     label_col = df.columns[1]
@@ -234,7 +243,9 @@ def show_visualization(df):
     )
 
     chart_df = df[[label_col, value_col]].copy()
-    chart_df = chart_df.sort_values(by=value_col, ascending=False)
+
+    # 🔥 FIX duplicate column issue
+    chart_df = chart_df.groupby(label_col)[value_col].sum().reset_index()
 
     if chart == "Bar Chart":
         st.bar_chart(chart_df.set_index(label_col))
@@ -249,7 +260,7 @@ def show_visualization(df):
 
 
 # =====================================================
-# RESPONSE HANDLER (ONLY ADDITIONS HERE)
+# RESPONSE HANDLER (FIXED JSON + ADDED FILTERS)
 # =====================================================
 def render_response(response):
 
@@ -259,6 +270,8 @@ def render_response(response):
         end = cleaned.rfind("}") + 1
 
         json_str = cleaned[start:end]
+
+        # 🔥 FIX BAD JSON
         json_str = json_str.replace("'", '"')
 
         parsed = json.loads(json_str)
@@ -273,29 +286,18 @@ def render_response(response):
             st.markdown("### 📊 Data ($)")
             st.dataframe(df)
 
-            # 🔥 FILTERS (NEW)
+            # 🔥 FILTERS
             st.markdown("### 🎛️ Filters")
-            filter_cols = st.multiselect("Select filters", df.columns)
-
-            for col in filter_cols:
-                values = df[col].unique()
-                selected = st.multiselect(f"{col}", values, default=values)
+            for col in df.columns[:-1]:
+                selected = st.multiselect(col, df[col].unique(), default=df[col].unique())
                 df = df[df[col].isin(selected)]
 
-            # 🔥 DRILL DOWN (NEW)
-            st.markdown("### 🔍 Drill Down")
+            # 🔥 DRILLDOWN
             if len(df.columns) > 2:
-                group_col = st.selectbox("Select Dimension", df.columns[:-1])
-
+                st.markdown("### 🔍 Drill Down")
+                group_col = st.selectbox("Group by", df.columns[:-1])
                 grouped = df.groupby(group_col)[df.columns[-1]].sum().reset_index()
                 st.dataframe(grouped)
-
-                drill_val = st.selectbox("Select Value", grouped[group_col])
-
-                if drill_val:
-                    detail = df[df[group_col] == drill_val]
-                    st.write("Detailed View")
-                    st.dataframe(detail)
 
             if st.session_state.mode == "summarize":
                 show_visualization(df)
@@ -313,7 +315,7 @@ def render_response(response):
 
 
 # =====================================================
-# RUN ANALYSIS (UNCHANGED)
+# RUN ANALYSIS
 # =====================================================
 if run_clicked:
 
@@ -347,7 +349,7 @@ if run_clicked:
 
 
 # =====================================================
-# KEEP RESULT (UNCHANGED)
+# KEEP RESULT
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
