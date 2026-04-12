@@ -18,7 +18,7 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND (UNCHANGED - just slightly visible)
+# BACKGROUND (UNCHANGED)
 # =====================================================
 def get_base64_image(image_path):
     try:
@@ -65,7 +65,7 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# SESSION STATE (ONLY ADD viz_df)
+# SESSION STATE
 # =====================================================
 if "mode" not in st.session_state:
     st.session_state.mode = "summarize"
@@ -76,7 +76,7 @@ if "user_query" not in st.session_state:
 if "last_df" not in st.session_state:
     st.session_state.last_df = None
 
-if "viz_df" not in st.session_state:   # ✅ NEW FIX
+if "viz_df" not in st.session_state:
     st.session_state.viz_df = None
 
 if "last_response" not in st.session_state:
@@ -84,7 +84,7 @@ if "last_response" not in st.session_state:
 
 
 # =====================================================
-# TABS (UNCHANGED)
+# TABS
 # =====================================================
 tab1, tab2 = st.tabs(["📊 Summarize", "✨ Suggest"])
 
@@ -95,6 +95,8 @@ selected_query = None
 # SUMMARIZE
 # =====================================================
 with tab1:
+
+    st.session_state.mode = "summarize"
 
     st.markdown("### ⚡ Quick Insights")
 
@@ -120,6 +122,8 @@ with tab1:
 # SUGGEST
 # =====================================================
 with tab2:
+
+    st.session_state.mode = "suggest"
 
     option = st.selectbox("", [
         "Select...",
@@ -162,11 +166,11 @@ def show_kpis(df):
 
 
 # =====================================================
-# VISUALIZATION (FIXED - no disappearing)
+# VISUALIZATION (FIXED STABLE)
 # =====================================================
 def show_visualization():
 
-    df = st.session_state.viz_df   # ✅ always use stored df
+    df = st.session_state.viz_df
 
     if df is None:
         return
@@ -199,23 +203,35 @@ def show_visualization():
 
 
 # =====================================================
-# RESPONSE HANDLER (SAFE JSON FIX ONLY)
+# 🔥 JSON CLEANER (MAIN FIX)
 # =====================================================
-def clean_json(json_str):
+def extract_json(response):
+
+    match = re.search(r"\{.*\}", response, re.DOTALL)
+
+    if not match:
+        return None
+
+    json_str = match.group(0)
+
+    # clean issues
     json_str = json_str.replace("'", '"')
     json_str = re.sub(r",\s*}", "}", json_str)
     json_str = re.sub(r",\s*]", "]", json_str)
+
     return json_str
 
 
+# =====================================================
+# RESPONSE HANDLER (FIXED)
+# =====================================================
 def render_response(response):
 
     try:
-        start = response.find("{")
-        end = response.rfind("}") + 1
+        json_str = extract_json(response)
 
-        json_str = response[start:end]
-        json_str = clean_json(json_str)
+        if not json_str:
+            raise ValueError("Invalid JSON")
 
         parsed = json.loads(json_str)
 
@@ -223,9 +239,8 @@ def render_response(response):
 
             df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
 
-            # ✅ store BOTH
             st.session_state.last_df = df
-            st.session_state.viz_df = df   # 🔥 IMPORTANT FIX
+            st.session_state.viz_df = df
             st.session_state.last_response = response
 
             st.markdown("### 📊 Data")
@@ -238,7 +253,7 @@ def render_response(response):
         elif parsed["type"] == "text":
             st.success(parsed["content"])
 
-    except:
+    except Exception as e:
         st.error("Parsing error")
         st.code(response)
 
@@ -268,7 +283,7 @@ if run_clicked:
 
 
 # =====================================================
-# KEEP STATE (FIXED)
+# KEEP STATE
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
@@ -281,7 +296,7 @@ if st.session_state.last_df is not None and not run_clicked:
 
 
 # =====================================================
-# DOWNLOAD (UNCHANGED)
+# DOWNLOAD
 # =====================================================
 if st.session_state.last_response:
 
