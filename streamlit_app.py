@@ -17,8 +17,9 @@ from agents.supervisor_agent import get_supervisor_app
 st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
+
 # =====================================================
-# BACKGROUND  ✅ (UNCHANGED - YOUR ORIGINAL)
+# BACKGROUND
 # =====================================================
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
@@ -56,7 +57,6 @@ div[data-testid="stButton"] button {{
 }}
 </style>
 """, unsafe_allow_html=True)
-
 
 # =====================================================
 # HEADER (UNCHANGED)
