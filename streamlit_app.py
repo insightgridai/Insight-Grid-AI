@@ -133,9 +133,10 @@ else:
 
     option = st.selectbox("", [
         "Select...",
-        "Top 5 customers",
-        "Average order value",
-        "Transactions today"
+        "Show Bottom 10 Districts by Total Revenue",
+        "Show top 10 Stores by Average order value",
+        "Show Top 10 Manufacturing Countries By Total Quantity sold",
+        "Show Top 10 Suppliers by Total revenue Contribution"
     ])
 
     if option != "Select...":
