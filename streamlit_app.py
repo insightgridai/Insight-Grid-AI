@@ -3,7 +3,6 @@ import base64
 import json
 import pandas as pd
 from fpdf import FPDF
-import unicodedata
 import matplotlib.pyplot as plt
 
 from db.connection import get_db_connection
@@ -18,7 +17,7 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND (RESTORED)
+# BACKGROUND (FIXED PROPERLY)
 # =====================================================
 def get_base64_image(image_path):
     try:
@@ -33,7 +32,7 @@ st.markdown(f"""
 <style>
 .stApp {{
     background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)),
-    url("data:image/png;base64,{bg_image}");
+                url("data:image/jpg;base64,{bg_image}");
     background-size: cover;
     background-position: center;
 }}
@@ -42,7 +41,7 @@ st.markdown(f"""
 
 
 # =====================================================
-# HEADER (UNCHANGED)
+# HEADER
 # =====================================================
 col1, col2 = st.columns([6, 2])
 
@@ -66,7 +65,7 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # =====================================================
-# SESSION STATE (FIXED)
+# SESSION STATE
 # =====================================================
 if "mode" not in st.session_state:
     st.session_state.mode = "summarize"
@@ -79,9 +78,6 @@ if "last_df" not in st.session_state:
 
 if "last_response" not in st.session_state:
     st.session_state.last_response = ""
-
-if "chart_type" not in st.session_state:
-    st.session_state.chart_type = "Bar"
 
 
 # =====================================================
@@ -158,20 +154,19 @@ run_clicked = st.button("Run Analysis")
 # KPI
 # =====================================================
 def show_kpis(df):
-
     num_cols = df.select_dtypes(include="number").columns
     if len(num_cols) == 0:
         return
 
     col = num_cols[-1]
 
-    st.metric("Total", f"${df[col].sum():,.0f}")
-    st.metric("Avg", f"${df[col].mean():,.0f}")
-    st.metric("Max", f"${df[col].max():,.0f}")
+    st.metric("Total", f"{df[col].sum():,.0f}")
+    st.metric("Avg", f"{df[col].mean():,.0f}")
+    st.metric("Max", f"{df[col].max():,.0f}")
 
 
 # =====================================================
-# VISUALIZATION (STABLE)
+# VISUALIZATION
 # =====================================================
 def show_visualization(df):
 
@@ -220,8 +215,10 @@ def render_response(response):
             st.session_state.last_df = df
             st.session_state.last_response = response
 
+            st.markdown("### 📊 Data")
             st.dataframe(df)
 
+            # ✅ ONLY FOR SUMMARIZE
             if st.session_state.mode == "summarize":
                 show_kpis(df)
                 show_visualization(df)
@@ -235,9 +232,11 @@ def render_response(response):
 
 
 # =====================================================
-# RUN ANALYSIS (FIXED)
+# RUN ANALYSIS
 # =====================================================
 if run_clicked:
+
+    st.session_state.last_df = None  # prevent duplicate
 
     with st.spinner("Running Multi-Agent System..."):
 
@@ -257,10 +256,11 @@ if run_clicked:
 
 
 # =====================================================
-# KEEP STATE (IMPORTANT FIX)
+# KEEP STATE (FIXED - NO DUPLICATE)
 # =====================================================
-if st.session_state.last_df is not None:
+if st.session_state.last_df is not None and not run_clicked:
 
+    st.markdown("### 📊 Data")
     st.dataframe(st.session_state.last_df)
 
     if st.session_state.mode == "summarize":
@@ -269,7 +269,7 @@ if st.session_state.last_df is not None:
 
 
 # =====================================================
-# PDF DOWNLOAD (RESTORED)
+# DOWNLOAD REPORT
 # =====================================================
 if st.session_state.last_response:
 
