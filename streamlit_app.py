@@ -1,4 +1,3 @@
-# (YOUR IMPORTS — UNCHANGED)
 import streamlit as st
 import base64
 import json
@@ -19,7 +18,7 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND
+# BACKGROUND  ✅ (UNCHANGED - YOUR ORIGINAL)
 # =====================================================
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
@@ -250,7 +249,7 @@ def show_visualization(df):
 
 
 # =====================================================
-# RESPONSE HANDLER (UPDATED WITH ADDITIONS ONLY)
+# RESPONSE HANDLER (ONLY ADDITIONS HERE)
 # =====================================================
 def render_response(response):
 
@@ -274,11 +273,8 @@ def render_response(response):
             st.markdown("### 📊 Data ($)")
             st.dataframe(df)
 
-            # =============================
-            # 🔥 NEW: FILTERS
-            # =============================
+            # 🔥 FILTERS (NEW)
             st.markdown("### 🎛️ Filters")
-
             filter_cols = st.multiselect("Select filters", df.columns)
 
             for col in filter_cols:
@@ -286,24 +282,20 @@ def render_response(response):
                 selected = st.multiselect(f"{col}", values, default=values)
                 df = df[df[col].isin(selected)]
 
-            # =============================
-            # 🔥 NEW: DRILL DOWN
-            # =============================
+            # 🔥 DRILL DOWN (NEW)
             st.markdown("### 🔍 Drill Down")
-
             if len(df.columns) > 2:
                 group_col = st.selectbox("Select Dimension", df.columns[:-1])
 
-                if group_col:
-                    grouped = df.groupby(group_col)[df.columns[-1]].sum().reset_index()
-                    st.dataframe(grouped)
+                grouped = df.groupby(group_col)[df.columns[-1]].sum().reset_index()
+                st.dataframe(grouped)
 
-                    drill_val = st.selectbox("Select Value", grouped[group_col])
+                drill_val = st.selectbox("Select Value", grouped[group_col])
 
-                    if drill_val:
-                        detail = df[df[group_col] == drill_val]
-                        st.write("Detailed View")
-                        st.dataframe(detail)
+                if drill_val:
+                    detail = df[df[group_col] == drill_val]
+                    st.write("Detailed View")
+                    st.dataframe(detail)
 
             if st.session_state.mode == "summarize":
                 show_visualization(df)
