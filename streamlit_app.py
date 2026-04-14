@@ -31,7 +31,7 @@ bg_image = get_base64_image("assets/backgroud6.jfif")
 st.markdown(f"""
 <style>
 .stApp {{
-    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)),
+    background: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)),
                 url("data:image/jpg;base64,{bg_image}");
     background-size: cover;
     background-position: center;
