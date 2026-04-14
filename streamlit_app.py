@@ -294,28 +294,84 @@ if st.session_state.last_response:
         end = st.session_state.last_response.rfind("}") + 1
         parsed = json.loads(st.session_state.last_response[start:end])
 
-        pdf.set_font("Arial", "B", 14)
+        # ===== TITLE =====
+        pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, "Insight Grid AI Report", ln=True)
 
         pdf.ln(5)
 
+        # ===== QUERY =====
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 8, "Query:", ln=True)
+
+        pdf.set_font("Arial", size=11)
+        pdf.multi_cell(0, 8, st.session_state.user_query)
+
+        pdf.ln(5)
+
+        # ===== TABLE RESPONSE =====
         if parsed["type"] == "table":
 
             columns = parsed["columns"]
             data = parsed["data"]
 
-            pdf.set_font("Arial", "B", 9)
+            # ===== SUMMARY =====
+            pdf.set_font("Arial", "B", 12)
+            pdf.cell(0, 8, "Summary:", ln=True)
+
+            pdf.set_font("Arial", size=10)
+            summary_line = " | ".join(columns)
+            pdf.multi_cell(0, 6, summary_line)
+
+            pdf.ln(3)
+
+            # ===== TABLE =====
+            col_width = 180 / len(columns)
+
+            pdf.set_font("Arial", "B", 10)
             for col in columns:
-                pdf.cell(45, 8, str(col), border=1)
+                pdf.cell(col_width, 8, str(col), border=1)
             pdf.ln()
 
-            pdf.set_font("Arial", size=8)
+            pdf.set_font("Arial", size=9)
             for row in data:
                 for item in row:
-                    pdf.cell(45, 8, str(item), border=1)
+                    pdf.cell(col_width, 8, str(item), border=1)
                 pdf.ln()
 
+            pdf.ln(5)
+
+            # ===== CHART IMAGE (same as UI) =====
+            try:
+                df = pd.DataFrame(data, columns=columns)
+
+                num_cols = df.select_dtypes(include="number").columns
+                if len(num_cols) > 0:
+                    value_col = num_cols[-1]
+                    label_col = [c for c in df.columns if c != value_col][0]
+
+                    chart_df = df.groupby(label_col)[value_col].sum().reset_index()
+
+                    fig, ax = plt.subplots()
+                    ax.bar(chart_df[label_col], chart_df[value_col])
+
+                    img_path = "temp_chart.png"
+                    plt.xticks(rotation=45)
+                    plt.tight_layout()
+                    fig.savefig(img_path)
+                    plt.close(fig)
+
+                    pdf.image(img_path, x=10, w=180)
+
+            except:
+                pass
+
+        # ===== TEXT RESPONSE =====
         elif parsed["type"] == "text":
+
+            pdf.set_font("Arial", "B", 12)
+            pdf.cell(0, 8, "Summary:", ln=True)
+
             pdf.set_font("Arial", size=11)
             pdf.multi_cell(0, 8, parsed["content"])
 
