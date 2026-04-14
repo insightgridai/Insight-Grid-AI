@@ -36,21 +36,6 @@ st.markdown(f"""
     background-size: cover;
     background-position: center;
 }}
-
-/* 🔥 TAB HIGHLIGHT (ONLY UI CHANGE) */
-.stTabs [data-baseweb="tab"] {{
-    font-size: 16px;
-    padding: 10px 20px;
-    border-radius: 10px;
-    background-color: rgba(255,255,255,0.05);
-    color: white;
-}}
-
-.stTabs [aria-selected="true"] {{
-    background: linear-gradient(90deg, #38bdf8, #0ea5e9);
-    color: white;
-}}
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -96,11 +81,18 @@ if "last_response" not in st.session_state:
 
 
 # =====================================================
-# DATA ENGINE (CHANGED TO TABS ONLY)
+# DATA ENGINE
 # =====================================================
 st.markdown("<h2>📊 Data Engine</h2>", unsafe_allow_html=True)
 
-tab1, tab2 = st.tabs(["📊 Summarize", "✨ Suggest"])
+col1, col2 = st.columns(2)
+
+if col1.button("📊 Summarize"):
+    st.session_state.mode = "summarize"
+
+if col2.button("✨ Suggest"):
+    st.session_state.mode = "suggest"
+
 
 selected_query = None
 
@@ -108,9 +100,7 @@ selected_query = None
 # =====================================================
 # SUMMARIZE OPTIONS
 # =====================================================
-with tab1:
-
-    st.session_state.mode = "summarize"
+if st.session_state.mode == "summarize":
 
     st.markdown("### 📊 Summarize Options")
 
@@ -135,9 +125,7 @@ with tab1:
 # =====================================================
 # SUGGEST
 # =====================================================
-with tab2:
-
-    st.session_state.mode = "suggest"
+else:
 
     option = st.selectbox("", [
         "Select...",
@@ -230,6 +218,7 @@ def render_response(response):
             st.markdown("### 📊 Data")
             st.dataframe(df)
 
+            # ✅ ONLY FOR SUMMARIZE
             if st.session_state.mode == "summarize":
                 show_kpis(df)
                 show_visualization(df)
@@ -247,7 +236,7 @@ def render_response(response):
 # =====================================================
 if run_clicked:
 
-    st.session_state.last_df = None
+    st.session_state.last_df = None  # prevent duplicate
 
     with st.spinner("Running Multi-Agent System..."):
 
@@ -267,7 +256,7 @@ if run_clicked:
 
 
 # =====================================================
-# KEEP STATE
+# KEEP STATE (FIXED - NO DUPLICATE)
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
