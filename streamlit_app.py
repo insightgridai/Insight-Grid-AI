@@ -341,7 +341,7 @@ if st.session_state.last_response:
 
             pdf.ln(5)
 
-            # ===== CHART IMAGE (same as UI) =====
+            # ===== CHART IMAGE (FIXED Y-AXIS ONLY) =====
             try:
                 df = pd.DataFrame(data, columns=columns)
 
@@ -352,12 +352,18 @@ if st.session_state.last_response:
 
                     chart_df = df.groupby(label_col)[value_col].sum().reset_index()
 
+                    import matplotlib.ticker as ticker  # ✅ ONLY ADDITION
+
                     fig, ax = plt.subplots()
                     ax.bar(chart_df[label_col], chart_df[value_col])
 
-                    img_path = "temp_chart.png"
+                    # ✅ FIX: Remove scientific notation (1e7 issue)
+                    ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
+
                     plt.xticks(rotation=45)
                     plt.tight_layout()
+
+                    img_path = "temp_chart.png"
                     fig.savefig(img_path)
                     plt.close(fig)
 
