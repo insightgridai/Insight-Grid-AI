@@ -146,7 +146,8 @@ else:
         "Show Bottom 10 Districts by Total Revenue",
         "Show top 10 Stores by Average order value",
         "Show Top 10 Manufacturing Countries By Total Quantity sold",
-        "Show Top 10 Suppliers by Total revenue Contribution"
+        "Show Top 10 Suppliers by Total revenue Contribution",
+        "Compare MetaData from Store Dim and Item dim any similarities"
     ])
 
     if option != "Select...":
