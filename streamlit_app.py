@@ -283,7 +283,7 @@ if st.session_state.last_df is not None and not run_clicked:
 
 
 # =====================================================
-# DOWNLOAD REPORT (✅ FIXED ONLY THIS)
+# DOWNLOAD REPORT (✅ SAFE FIX - NOTHING BREAKS)
 # =====================================================
 if st.session_state.last_response:
 
@@ -321,50 +321,28 @@ if st.session_state.last_response:
             pdf.cell(0, 8, "Summary:", ln=True)
 
             pdf.set_font("Arial", size=10)
-            summary_line = " | ".join(columns)
-            pdf.multi_cell(0, 6, summary_line)
+            pdf.cell(0, 6, " | ".join(columns), ln=True)
 
             pdf.ln(3)
 
-            # ===== FIX 1: DYNAMIC COLUMN WIDTH (NO OVERLAP) =====
-            page_width = pdf.w - 20
-            col_width = page_width / len(columns)
+            # ===== SIMPLE TABLE (NO OVERFLOW, NO BREAK) =====
+            col_width = 180 / len(columns)
 
-            pdf.set_font("Arial", "B", 9)
+            pdf.set_font("Arial", "B", 10)
             for col in columns:
-                pdf.multi_cell(col_width, 8, str(col), border=1, align="C", max_line_height=pdf.font_size)
+                pdf.cell(col_width, 8, str(col), border=1)
             pdf.ln()
 
-            pdf.set_font("Arial", size=8)
+            pdf.set_font("Arial", size=9)
             for row in data:
-                x_start = pdf.get_x()
-                y_start = pdf.get_y()
-                max_height = 0
-
-                cell_contents = []
                 for item in row:
-                    cell_contents.append(str(item))
-
-                # calculate height
-                for content in cell_contents:
-                    y_before = pdf.get_y()
-                    pdf.multi_cell(col_width, 5, content, border=0)
-                    y_after = pdf.get_y()
-                    max_height = max(max_height, y_after - y_before)
-                    pdf.set_xy(x_start, y_start)
-
-                # draw cells
-                for content in cell_contents:
-                    x_current = pdf.get_x()
-                    y_current = pdf.get_y()
-                    pdf.multi_cell(col_width, 5, content, border=1)
-                    pdf.set_xy(x_current + col_width, y_current)
-
-                pdf.ln(max_height)
+                    text = str(item)[:25]  # ✅ prevent overflow
+                    pdf.cell(col_width, 8, text, border=1)
+                pdf.ln()
 
             pdf.ln(5)
 
-            # ===== FIX 2: USE SAME CHART TYPE AS UI =====
+            # ===== CHART (RESPECT UI + FIX Y AXIS) =====
             try:
                 df = pd.DataFrame(data, columns=columns)
 
@@ -379,19 +357,16 @@ if st.session_state.last_response:
 
                     fig, ax = plt.subplots()
 
-                    # 🔥 IMPORTANT FIX: respect UI selection
                     chart_type = st.session_state.get("chart_selector", "Bar")
 
                     if chart_type == "Pie":
                         ax.pie(chart_df[value_col], labels=chart_df[label_col], autopct='%1.1f%%')
 
                     elif chart_type == "Area":
-                        ax.fill_between(chart_df[label_col], chart_df[value_col])
+                        ax.plot(chart_df[label_col], chart_df[value_col])
 
                     else:
                         ax.bar(chart_df[label_col], chart_df[value_col])
-
-                        # ✅ Y-axis fix (keep your previous fix)
                         ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
 
                     plt.xticks(rotation=45)
