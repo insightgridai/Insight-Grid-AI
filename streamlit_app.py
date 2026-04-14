@@ -37,9 +37,8 @@ st.markdown(f"""
     background-position: center;
 }}
 
-/* 🔵 AI BLUE BUTTON STYLE */
 div[data-testid="stButton"] button {{
-    background: rgba(56, 189, 248, 0.25);   /* transparent blue */
+    background: rgba(56, 189, 248, 0.25);
     border: 1px solid rgba(56, 189, 248, 0.6);
     color: #e0f2fe;
     border-radius: 12px;
@@ -47,13 +46,11 @@ div[data-testid="stButton"] button {{
     transition: all 0.3s ease;
 }}
 
-/* Hover Glow Effect */
 div[data-testid="stButton"] button:hover {{
     background: rgba(56, 189, 248, 0.45);
     box-shadow: 0px 0px 12px rgba(56, 189, 248, 0.8);
     transform: scale(1.03);
 }}
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -110,7 +107,6 @@ if col1.button("📊 Summarize"):
 
 if col2.button("✨ Suggest"):
     st.session_state.mode = "suggest"
-
 
 selected_query = None
 
@@ -286,15 +282,46 @@ if st.session_state.last_df is not None and not run_clicked:
 
 
 # =====================================================
-# DOWNLOAD REPORT
+# DOWNLOAD REPORT (✅ FIXED ONLY THIS)
 # =====================================================
 if st.session_state.last_response:
 
     pdf = FPDF()
     pdf.add_page()
 
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 8, st.session_state.last_response)
+    try:
+        start = st.session_state.last_response.find("{")
+        end = st.session_state.last_response.rfind("}") + 1
+        parsed = json.loads(st.session_state.last_response[start:end])
+
+        pdf.set_font("Arial", "B", 14)
+        pdf.cell(0, 10, "Insight Grid AI Report", ln=True)
+
+        pdf.ln(5)
+
+        if parsed["type"] == "table":
+
+            columns = parsed["columns"]
+            data = parsed["data"]
+
+            pdf.set_font("Arial", "B", 9)
+            for col in columns:
+                pdf.cell(45, 8, str(col), border=1)
+            pdf.ln()
+
+            pdf.set_font("Arial", size=8)
+            for row in data:
+                for item in row:
+                    pdf.cell(45, 8, str(item), border=1)
+                pdf.ln()
+
+        elif parsed["type"] == "text":
+            pdf.set_font("Arial", size=11)
+            pdf.multi_cell(0, 8, parsed["content"])
+
+    except:
+        pdf.set_font("Arial", size=10)
+        pdf.multi_cell(0, 8, st.session_state.last_response)
 
     pdf_bytes = pdf.output(dest="S").encode("latin-1")
 
