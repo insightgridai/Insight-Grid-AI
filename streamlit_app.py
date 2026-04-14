@@ -326,23 +326,45 @@ if st.session_state.last_response:
 
             pdf.ln(3)
 
-            # ===== TABLE =====
-            col_width = 180 / len(columns)
+            # ===== FIX 1: DYNAMIC COLUMN WIDTH (NO OVERLAP) =====
+            page_width = pdf.w - 20
+            col_width = page_width / len(columns)
 
-            pdf.set_font("Arial", "B", 10)
+            pdf.set_font("Arial", "B", 9)
             for col in columns:
-                pdf.cell(col_width, 8, str(col), border=1)
+                pdf.multi_cell(col_width, 8, str(col), border=1, align="C", max_line_height=pdf.font_size)
             pdf.ln()
 
-            pdf.set_font("Arial", size=9)
+            pdf.set_font("Arial", size=8)
             for row in data:
+                x_start = pdf.get_x()
+                y_start = pdf.get_y()
+                max_height = 0
+
+                cell_contents = []
                 for item in row:
-                    pdf.cell(col_width, 8, str(item), border=1)
-                pdf.ln()
+                    cell_contents.append(str(item))
+
+                # calculate height
+                for content in cell_contents:
+                    y_before = pdf.get_y()
+                    pdf.multi_cell(col_width, 5, content, border=0)
+                    y_after = pdf.get_y()
+                    max_height = max(max_height, y_after - y_before)
+                    pdf.set_xy(x_start, y_start)
+
+                # draw cells
+                for content in cell_contents:
+                    x_current = pdf.get_x()
+                    y_current = pdf.get_y()
+                    pdf.multi_cell(col_width, 5, content, border=1)
+                    pdf.set_xy(x_current + col_width, y_current)
+
+                pdf.ln(max_height)
 
             pdf.ln(5)
 
-            # ===== CHART IMAGE (FIXED Y-AXIS ONLY) =====
+            # ===== FIX 2: USE SAME CHART TYPE AS UI =====
             try:
                 df = pd.DataFrame(data, columns=columns)
 
@@ -353,13 +375,24 @@ if st.session_state.last_response:
 
                     chart_df = df.groupby(label_col)[value_col].sum().reset_index()
 
-                    import matplotlib.ticker as ticker  # ✅ ONLY ADDITION
+                    import matplotlib.ticker as ticker
 
                     fig, ax = plt.subplots()
-                    ax.bar(chart_df[label_col], chart_df[value_col])
 
-                    # ✅ FIX: Remove scientific notation (1e7 issue)
-                    ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
+                    # 🔥 IMPORTANT FIX: respect UI selection
+                    chart_type = st.session_state.get("chart_selector", "Bar")
+
+                    if chart_type == "Pie":
+                        ax.pie(chart_df[value_col], labels=chart_df[label_col], autopct='%1.1f%%')
+
+                    elif chart_type == "Area":
+                        ax.fill_between(chart_df[label_col], chart_df[value_col])
+
+                    else:
+                        ax.bar(chart_df[label_col], chart_df[value_col])
+
+                        # ✅ Y-axis fix (keep your previous fix)
+                        ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
 
                     plt.xticks(rotation=45)
                     plt.tight_layout()
