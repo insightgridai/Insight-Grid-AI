@@ -17,7 +17,7 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND (FIXED PROPERLY)
+# BACKGROUND + BUTTON STYLE (ONLY UI CHANGE)
 # =====================================================
 def get_base64_image(image_path):
     try:
@@ -31,11 +31,29 @@ bg_image = get_base64_image("assets/backgroud6.jfif")
 st.markdown(f"""
 <style>
 .stApp {{
-    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)),
+    background: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)),
                 url("data:image/jpg;base64,{bg_image}");
     background-size: cover;
     background-position: center;
 }}
+
+/* 🔵 AI BLUE BUTTON STYLE */
+div[data-testid="stButton"] button {{
+    background: rgba(56, 189, 248, 0.25);   /* transparent blue */
+    border: 1px solid rgba(56, 189, 248, 0.6);
+    color: #e0f2fe;
+    border-radius: 12px;
+    backdrop-filter: blur(6px);
+    transition: all 0.3s ease;
+}}
+
+/* Hover Glow Effect */
+div[data-testid="stButton"] button:hover {{
+    background: rgba(56, 189, 248, 0.45);
+    box-shadow: 0px 0px 12px rgba(56, 189, 248, 0.8);
+    transform: scale(1.03);
+}}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -198,7 +216,7 @@ def show_visualization(df):
 
 
 # =====================================================
-# RESPONSE HANDLER (FIXED)
+# RESPONSE HANDLER
 # =====================================================
 def render_response(response):
 
@@ -218,7 +236,6 @@ def render_response(response):
             st.markdown("### 📊 Data")
             st.dataframe(df)
 
-            # ✅ ONLY FOR SUMMARIZE
             if st.session_state.mode == "summarize":
                 show_kpis(df)
                 show_visualization(df)
@@ -236,7 +253,7 @@ def render_response(response):
 # =====================================================
 if run_clicked:
 
-    st.session_state.last_df = None  # prevent duplicate
+    st.session_state.last_df = None
 
     with st.spinner("Running Multi-Agent System..."):
 
@@ -256,7 +273,7 @@ if run_clicked:
 
 
 # =====================================================
-# KEEP STATE (FIXED - NO DUPLICATE)
+# KEEP STATE
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
