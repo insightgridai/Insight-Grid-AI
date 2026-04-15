@@ -213,7 +213,7 @@ def show_visualization(df):
 
 
 # =====================================================
-# RESPONSE HANDLER
+# RESPONSE HANDLER (UNCHANGED — IMPORTANT)
 # =====================================================
 def render_response(response):
 
@@ -246,7 +246,7 @@ def render_response(response):
 
 
 # =====================================================
-# RUN ANALYSIS
+# RUN ANALYSIS (UNCHANGED)
 # =====================================================
 if run_clicked:
 
@@ -270,7 +270,7 @@ if run_clicked:
 
 
 # =====================================================
-# KEEP STATE
+# KEEP STATE (UNCHANGED)
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
@@ -283,16 +283,18 @@ if st.session_state.last_df is not None and not run_clicked:
 
 
 # =====================================================
-# DOWNLOAD REPORT (✅ UPDATED ONLY THIS BLOCK)
+# DOWNLOAD REPORT (✅ ONLY FIX APPLIED HERE)
 # =====================================================
 if st.session_state.last_response:
+
+    pdf = None
 
     try:
         start = st.session_state.last_response.find("{")
         end = st.session_state.last_response.rfind("}") + 1
         parsed = json.loads(st.session_state.last_response[start:end])
 
-        # ===== AUTO PAGE SIZE =====
+        # ✅ AUTO PAGE SIZE BASED ON COLUMNS
         columns = parsed.get("columns", [])
         num_cols = len(columns)
 
@@ -320,11 +322,11 @@ if st.session_state.last_response:
 
         pdf.ln(5)
 
-        # ===== TABLE =====
         if parsed["type"] == "table":
 
             data = parsed["data"]
 
+            # ✅ DYNAMIC COLUMN WIDTH
             page_width = pdf.w - 20
             col_width = page_width / len(columns)
 
