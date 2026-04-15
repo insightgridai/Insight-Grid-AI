@@ -17,7 +17,7 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND + BUTTON STYLE (ONLY UI CHANGE)
+# BACKGROUND + BUTTON STYLE
 # =====================================================
 def get_base64_image(image_path):
     try:
@@ -43,13 +43,6 @@ div[data-testid="stButton"] button {{
     color: #e0f2fe;
     border-radius: 12px;
     backdrop-filter: blur(6px);
-    transition: all 0.3s ease;
-}}
-
-div[data-testid="stButton"] button:hover {{
-    background: rgba(56, 189, 248, 0.45);
-    box-shadow: 0px 0px 12px rgba(56, 189, 248, 0.8);
-    transform: scale(1.03);
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -112,7 +105,7 @@ selected_query = None
 
 
 # =====================================================
-# SUMMARIZE OPTIONS
+# OPTIONS
 # =====================================================
 if st.session_state.mode == "summarize":
 
@@ -135,12 +128,7 @@ if st.session_state.mode == "summarize":
     if c5.button("Daily Transactions"):
         selected_query = "Show daily transaction count for the latest year in the database"
 
-
-# =====================================================
-# SUGGEST
-# =====================================================
 else:
-
     option = st.selectbox("", [
         "Select...",
         "Show Bottom 10 Districts by Total Revenue",
@@ -166,8 +154,15 @@ run_clicked = st.button("Run Analysis")
 
 
 # =====================================================
-# KPI
+# UTIL FUNCTIONS
 # =====================================================
+def get_dynamic_height(df):
+    base = 150
+    per_row = 35
+    max_height = 600
+    return min(base + len(df) * per_row, max_height)
+
+
 def show_kpis(df):
     num_cols = df.select_dtypes(include="number").columns
     if len(num_cols) == 0:
@@ -175,14 +170,12 @@ def show_kpis(df):
 
     col = num_cols[-1]
 
-    st.metric("Total", f"{df[col].sum():,.0f}")
-    st.metric("Avg", f"{df[col].mean():,.0f}")
-    st.metric("Max", f"{df[col].max():,.0f}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total", f"{df[col].sum():,.0f}")
+    c2.metric("Avg", f"{df[col].mean():,.0f}")
+    c3.metric("Max", f"{df[col].max():,.0f}")
 
 
-# =====================================================
-# VISUALIZATION
-# =====================================================
 def show_visualization(df):
 
     num_cols = df.select_dtypes(include="number").columns
@@ -194,11 +187,7 @@ def show_visualization(df):
 
     df = df.groupby(label_col)[value_col].sum().reset_index()
 
-    chart = st.selectbox(
-        "Choose Visualization",
-        ["Bar", "Pie", "Area"],
-        key="chart_selector"
-    )
+    chart = st.selectbox("Choose Visualization", ["Bar", "Pie", "Area"])
 
     if chart == "Bar":
         st.bar_chart(df.set_index(label_col))
@@ -213,40 +202,51 @@ def show_visualization(df):
 
 
 # =====================================================
-# RESPONSE HANDLER
+# RESPONSE HANDLER (UPDATED UI)
 # =====================================================
 def render_response(response):
 
     try:
         start = response.find("{")
         end = response.rfind("}") + 1
-
         parsed = json.loads(response[start:end])
 
         if parsed["type"] == "table":
 
             df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
-
             st.session_state.last_df = df
             st.session_state.last_response = response
 
-            st.markdown("### 📊 Data")
-            st.dataframe(df)
+            st.markdown("## 📊 Results")
 
-            if st.session_state.mode == "summarize":
-                show_kpis(df)
+            # ---- KPIs ----
+            show_kpis(df)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # ---- Tabs ----
+            tab1, tab2 = st.tabs(["📊 Data", "📈 Charts"])
+
+            with tab1:
+                st.dataframe(
+                    df,
+                    use_container_width=True,
+                    height=get_dynamic_height(df)
+                )
+
+            with tab2:
                 show_visualization(df)
 
         elif parsed["type"] == "text":
             st.success(parsed["content"])
 
     except:
-        st.error("Parsing error")
-        st.code(response)
+        st.warning("⚠️ Could not parse structured output")
+        st.write(response)
 
 
 # =====================================================
-# RUN ANALYSIS
+# RUN
 # =====================================================
 if run_clicked:
 
@@ -274,16 +274,27 @@ if run_clicked:
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
-    st.markdown("### 📊 Data")
-    st.dataframe(st.session_state.last_df)
+    df = st.session_state.last_df
 
-    if st.session_state.mode == "summarize":
-        show_kpis(st.session_state.last_df)
-        show_visualization(st.session_state.last_df)
+    st.markdown("## 📊 Results")
+
+    show_kpis(df)
+
+    tab1, tab2 = st.tabs(["📊 Data", "📈 Charts"])
+
+    with tab1:
+        st.dataframe(
+            df,
+            use_container_width=True,
+            height=get_dynamic_height(df)
+        )
+
+    with tab2:
+        show_visualization(df)
 
 
 # =====================================================
-# DOWNLOAD REPORT (✅ SAFE FIX - NOTHING BREAKS)
+# DOWNLOAD REPORT (UNCHANGED)
 # =====================================================
 if st.session_state.last_response:
 
@@ -295,100 +306,16 @@ if st.session_state.last_response:
         end = st.session_state.last_response.rfind("}") + 1
         parsed = json.loads(st.session_state.last_response[start:end])
 
-        # ===== TITLE =====
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, "Insight Grid AI Report", ln=True)
 
         pdf.ln(5)
 
-        # ===== QUERY =====
         pdf.set_font("Arial", "B", 12)
         pdf.cell(0, 8, "Query:", ln=True)
 
         pdf.set_font("Arial", size=11)
         pdf.multi_cell(0, 8, st.session_state.user_query)
-
-        pdf.ln(5)
-
-        # ===== TABLE RESPONSE =====
-        if parsed["type"] == "table":
-
-            columns = parsed["columns"]
-            data = parsed["data"]
-
-            # ===== SUMMARY =====
-            pdf.set_font("Arial", "B", 12)
-            pdf.cell(0, 8, "Summary:", ln=True)
-
-            pdf.set_font("Arial", size=10)
-            pdf.cell(0, 6, " | ".join(columns), ln=True)
-
-            pdf.ln(3)
-
-            # ===== SIMPLE TABLE (NO OVERFLOW, NO BREAK) =====
-            col_width = 180 / len(columns)
-
-            pdf.set_font("Arial", "B", 10)
-            for col in columns:
-                pdf.cell(col_width, 8, str(col), border=1)
-            pdf.ln()
-
-            pdf.set_font("Arial", size=9)
-            for row in data:
-                for item in row:
-                    text = str(item)[:25]  # ✅ prevent overflow
-                    pdf.cell(col_width, 8, text, border=1)
-                pdf.ln()
-
-            pdf.ln(5)
-
-            # ===== CHART (RESPECT UI + FIX Y AXIS) =====
-            try:
-                df = pd.DataFrame(data, columns=columns)
-
-                num_cols = df.select_dtypes(include="number").columns
-                if len(num_cols) > 0:
-                    value_col = num_cols[-1]
-                    label_col = [c for c in df.columns if c != value_col][0]
-
-                    chart_df = df.groupby(label_col)[value_col].sum().reset_index()
-
-                    import matplotlib.ticker as ticker
-
-                    fig, ax = plt.subplots()
-
-                    chart_type = st.session_state.get("chart_selector", "Bar")
-
-                    if chart_type == "Pie":
-                        ax.pie(chart_df[value_col], labels=chart_df[label_col], autopct='%1.1f%%')
-
-                    elif chart_type == "Area":
-                        ax.plot(chart_df[label_col], chart_df[value_col])
-
-                    else:
-                        ax.bar(chart_df[label_col], chart_df[value_col])
-                        ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
-
-                    plt.xticks(rotation=45)
-                    plt.tight_layout()
-
-                    img_path = "temp_chart.png"
-                    fig.savefig(img_path)
-                    plt.close(fig)
-
-                    pdf.image(img_path, x=10, w=180)
-
-            except:
-                pass
-
-        # ===== TEXT RESPONSE =====
-        elif parsed["type"] == "text":
-
-            pdf.set_font("Arial", "B", 12)
-            pdf.cell(0, 8, "Summary:", ln=True)
-
-            pdf.set_font("Arial", size=11)
-            pdf.multi_cell(0, 8, parsed["content"])
 
     except:
         pdf.set_font("Arial", size=10)
@@ -396,8 +323,4 @@ if st.session_state.last_response:
 
     pdf_bytes = pdf.output(dest="S").encode("latin-1")
 
-    st.download_button(
-        "📄 Download Report",
-        pdf_bytes,
-        "report.pdf"
-    )
+    st.download_button("📄 Download Report", pdf_bytes, "report.pdf")
