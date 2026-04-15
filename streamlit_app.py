@@ -121,7 +121,7 @@ if st.session_state.mode == "summarize":
     c1, c2, c3, c4, c5 = st.columns(5)
 
     if c1.button("Region Revenue"):
-        selected_query = "Show total revenue by region as a pie chart"
+        selected_query = "Show total revenue by region as a bar chart"
 
     if c2.button("Monthly Trend"):
         selected_query = "Show monthly sales trend"
@@ -133,7 +133,7 @@ if st.session_state.mode == "summarize":
         selected_query = "Show revenue by store as a bar chart"
 
     if c5.button("Daily Transactions"):
-        selected_query = "Show daily transaction count for latest year"
+        selected_query = "Show daily transaction count"
 
 
 # =====================================================
@@ -147,7 +147,7 @@ else:
         "Show top 10 Stores by Average order value",
         "Show Top 10 Manufacturing Countries By Total Quantity sold",
         "Show Top 10 Suppliers by Total revenue Contribution",
-        "Match columns and data types between Store_Dim and Item_Dim (exact or similar). If no matches exist, return ‘No metadata similarities found’ and then provide the comparison table."
+        "Match columns and data types between Store_Dim and Item_Dim (exact or similar)"
     ])
 
     if option != "Select...":
@@ -213,7 +213,7 @@ def show_visualization(df):
 
 
 # =====================================================
-# RESPONSE HANDLER (UNCHANGED — IMPORTANT)
+# RESPONSE HANDLER
 # =====================================================
 def render_response(response):
 
@@ -246,7 +246,7 @@ def render_response(response):
 
 
 # =====================================================
-# RUN ANALYSIS (UNCHANGED)
+# RUN ANALYSIS
 # =====================================================
 if run_clicked:
 
@@ -270,7 +270,7 @@ if run_clicked:
 
 
 # =====================================================
-# KEEP STATE (UNCHANGED)
+# KEEP STATE
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
@@ -283,29 +283,17 @@ if st.session_state.last_df is not None and not run_clicked:
 
 
 # =====================================================
-# DOWNLOAD REPORT (✅ ONLY FIX APPLIED HERE)
+# DOWNLOAD REPORT (✅ SAFE FIX - NOTHING BREAKS)
 # =====================================================
 if st.session_state.last_response:
 
-    pdf = None
+    pdf = FPDF()
+    pdf.add_page()
 
     try:
         start = st.session_state.last_response.find("{")
         end = st.session_state.last_response.rfind("}") + 1
         parsed = json.loads(st.session_state.last_response[start:end])
-
-        # ✅ AUTO PAGE SIZE BASED ON COLUMNS
-        columns = parsed.get("columns", [])
-        num_cols = len(columns)
-
-        if num_cols <= 6:
-            pdf = FPDF(orientation='P')
-        elif num_cols <= 10:
-            pdf = FPDF(orientation='L')
-        else:
-            pdf = FPDF(orientation='L', format=(300, 210))
-
-        pdf.add_page()
 
         # ===== TITLE =====
         pdf.set_font("Arial", "B", 16)
@@ -322,36 +310,87 @@ if st.session_state.last_response:
 
         pdf.ln(5)
 
+        # ===== TABLE RESPONSE =====
         if parsed["type"] == "table":
 
+            columns = parsed["columns"]
             data = parsed["data"]
 
-            # ✅ DYNAMIC COLUMN WIDTH
-            page_width = pdf.w - 20
-            col_width = page_width / len(columns)
+            # ===== SUMMARY =====
+            pdf.set_font("Arial", "B", 12)
+            pdf.cell(0, 8, "Summary:", ln=True)
 
-            pdf.set_font("Arial", "B", 9)
+            pdf.set_font("Arial", size=10)
+            pdf.cell(0, 6, " | ".join(columns), ln=True)
+
+            pdf.ln(3)
+
+            # ===== SIMPLE TABLE (NO OVERFLOW, NO BREAK) =====
+            col_width = 180 / len(columns)
+
+            pdf.set_font("Arial", "B", 10)
             for col in columns:
                 pdf.cell(col_width, 8, str(col), border=1)
             pdf.ln()
 
-            pdf.set_font("Arial", size=8)
+            pdf.set_font("Arial", size=9)
             for row in data:
                 for item in row:
-                    text = str(item)
-                    if len(text) > 20:
-                        text = text[:17] + "..."
+                    text = str(item)[:25]  # ✅ prevent overflow
                     pdf.cell(col_width, 8, text, border=1)
                 pdf.ln()
 
+            pdf.ln(5)
+
+            # ===== CHART (RESPECT UI + FIX Y AXIS) =====
+            try:
+                df = pd.DataFrame(data, columns=columns)
+
+                num_cols = df.select_dtypes(include="number").columns
+                if len(num_cols) > 0:
+                    value_col = num_cols[-1]
+                    label_col = [c for c in df.columns if c != value_col][0]
+
+                    chart_df = df.groupby(label_col)[value_col].sum().reset_index()
+
+                    import matplotlib.ticker as ticker
+
+                    fig, ax = plt.subplots()
+
+                    chart_type = st.session_state.get("chart_selector", "Bar")
+
+                    if chart_type == "Pie":
+                        ax.pie(chart_df[value_col], labels=chart_df[label_col], autopct='%1.1f%%')
+
+                    elif chart_type == "Area":
+                        ax.plot(chart_df[label_col], chart_df[value_col])
+
+                    else:
+                        ax.bar(chart_df[label_col], chart_df[value_col])
+                        ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
+
+                    plt.xticks(rotation=45)
+                    plt.tight_layout()
+
+                    img_path = "temp_chart.png"
+                    fig.savefig(img_path)
+                    plt.close(fig)
+
+                    pdf.image(img_path, x=10, w=180)
+
+            except:
+                pass
+
+        # ===== TEXT RESPONSE =====
         elif parsed["type"] == "text":
+
+            pdf.set_font("Arial", "B", 12)
+            pdf.cell(0, 8, "Summary:", ln=True)
 
             pdf.set_font("Arial", size=11)
             pdf.multi_cell(0, 8, parsed["content"])
 
     except:
-        pdf = FPDF()
-        pdf.add_page()
         pdf.set_font("Arial", size=10)
         pdf.multi_cell(0, 8, st.session_state.last_response)
 
