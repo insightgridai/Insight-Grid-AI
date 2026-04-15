@@ -133,7 +133,7 @@ if st.session_state.mode == "summarize":
         selected_query = "Show revenue by store as a bar chart"
 
     if c5.button("Daily Transactions"):
-        selected_query = "Show daily transaction count"
+        selected_query = "Show daily transaction count for the latest year"
 
 
 # =====================================================
