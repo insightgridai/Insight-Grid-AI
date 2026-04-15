@@ -217,22 +217,9 @@ def show_visualization(df):
 # =====================================================
 def render_response(response):
 
-    try:
-        start = response.find("{")
-        end = response.rfind("}") + 1
+    if parsed["type"] == "table":
 
-        parsed = json.loads(response[start:end])
-
-        # =========================
-        # TABLE RESPONSE
-        # =========================
-        if parsed["type"] == "table":
-
-            # ✅ SHOW MESSAGE IF PRESENT
-            if "message" in parsed:
-                st.warning(parsed["message"])
-
-            df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
+        df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
 
             st.session_state.last_df = df
             st.session_state.last_response = response
@@ -244,18 +231,9 @@ def render_response(response):
                 show_kpis(df)
                 show_visualization(df)
 
-        # =========================
-        # TEXT RESPONSE
-        # =========================
+       
         elif parsed["type"] == "text":
             st.success(parsed["content"])
-
-        # =========================
-        # LIST RESPONSE (optional support)
-        # =========================
-        elif parsed["type"] == "list":
-            for item in parsed.get("items", []):
-                st.write(f"• {item}")
 
     except Exception as e:
         st.error("Parsing error")
