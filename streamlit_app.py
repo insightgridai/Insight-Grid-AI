@@ -133,7 +133,7 @@ if st.session_state.mode == "summarize":
         selected_query = "Show revenue by store as a bar chart"
 
     if c5.button("Daily Transactions"):
-        selected_query = "Show daily transaction count"
+        selected_query = "Show daily transaction count latest year in the database"
 
 
 # =====================================================
@@ -147,7 +147,7 @@ else:
         "Show top 10 Stores by Average order value",
         "Show Top 10 Manufacturing Countries By Total Quantity sold",
         "Show Top 10 Suppliers by Total revenue Contribution",
-        "Compare MetaData from Store Dim and Item dim any similarities"
+        "Match columns and data types between Store_Dim and Item_Dim (exact or similar). If no matches exist, return ‘No metadata similarities found’ and then provide the comparison table."
     ])
 
     if option != "Select...":
