@@ -217,9 +217,15 @@ def show_visualization(df):
 # =====================================================
 def render_response(response):
 
-    if parsed["type"] == "table":
+    try:
+        start = response.find("{")
+        end = response.rfind("}") + 1
 
-        df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
+        parsed = json.loads(response[start:end])
+
+        if parsed["type"] == "table":
+
+            df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
 
             st.session_state.last_df = df
             st.session_state.last_response = response
@@ -231,11 +237,10 @@ def render_response(response):
                 show_kpis(df)
                 show_visualization(df)
 
-       
         elif parsed["type"] == "text":
             st.success(parsed["content"])
 
-    except Exception as e:
+    except:
         st.error("Parsing error")
         st.code(response)
 
