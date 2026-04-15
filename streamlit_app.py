@@ -121,7 +121,7 @@ if st.session_state.mode == "summarize":
     c1, c2, c3, c4, c5 = st.columns(5)
 
     if c1.button("Region Revenue"):
-        selected_query = "Show total revenue by region as a pie chart"
+        selected_query = "Show total revenue by region as a bar chart"
 
     if c2.button("Monthly Trend"):
         selected_query = "Show monthly sales trend"
