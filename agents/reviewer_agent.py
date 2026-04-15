@@ -48,19 +48,7 @@ Return:
   "content": "your explanation"
 }
 
-4. SPECIAL CASE (VERY IMPORTANT):
-If the query is about metadata comparison AND no matches exist:
-
-Return:
-{
-  "type": "table",
-  "message": "No metadata similarities found",
-  "columns": [...],
-  "data": [...]
-}
-
 IMPORTANT RULES:
-- ADD "message" field when no matches exist
 - Do NOT return plain paragraphs for data queries
 - Do NOT add extra text outside JSON
 - Always prefer table format when data exists
