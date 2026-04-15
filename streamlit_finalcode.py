@@ -146,7 +146,8 @@ else:
         "Show Bottom 10 Districts by Total Revenue",
         "Show top 10 Stores by Average order value",
         "Show Top 10 Manufacturing Countries By Total Quantity sold",
-        "Show Top 10 Suppliers by Total revenue Contribution"
+        "Show Top 10 Suppliers by Total revenue Contribution",
+        "Compare MetaData from Store Dim and Item dim any similarities"
     ])
 
     if option != "Select...":
@@ -282,7 +283,7 @@ if st.session_state.last_df is not None and not run_clicked:
 
 
 # =====================================================
-# DOWNLOAD REPORT (✅ FIXED ONLY THIS)
+# DOWNLOAD REPORT (✅ SAFE FIX - NOTHING BREAKS)
 # =====================================================
 if st.session_state.last_response:
 
@@ -320,12 +321,11 @@ if st.session_state.last_response:
             pdf.cell(0, 8, "Summary:", ln=True)
 
             pdf.set_font("Arial", size=10)
-            summary_line = " | ".join(columns)
-            pdf.multi_cell(0, 6, summary_line)
+            pdf.cell(0, 6, " | ".join(columns), ln=True)
 
             pdf.ln(3)
 
-            # ===== TABLE =====
+            # ===== SIMPLE TABLE (NO OVERFLOW, NO BREAK) =====
             col_width = 180 / len(columns)
 
             pdf.set_font("Arial", "B", 10)
@@ -336,12 +336,13 @@ if st.session_state.last_response:
             pdf.set_font("Arial", size=9)
             for row in data:
                 for item in row:
-                    pdf.cell(col_width, 8, str(item), border=1)
+                    text = str(item)[:25]  # ✅ prevent overflow
+                    pdf.cell(col_width, 8, text, border=1)
                 pdf.ln()
 
             pdf.ln(5)
 
-            # ===== CHART IMAGE (same as UI) =====
+            # ===== CHART (RESPECT UI + FIX Y AXIS) =====
             try:
                 df = pd.DataFrame(data, columns=columns)
 
@@ -352,12 +353,26 @@ if st.session_state.last_response:
 
                     chart_df = df.groupby(label_col)[value_col].sum().reset_index()
 
-                    fig, ax = plt.subplots()
-                    ax.bar(chart_df[label_col], chart_df[value_col])
+                    import matplotlib.ticker as ticker
 
-                    img_path = "temp_chart.png"
+                    fig, ax = plt.subplots()
+
+                    chart_type = st.session_state.get("chart_selector", "Bar")
+
+                    if chart_type == "Pie":
+                        ax.pie(chart_df[value_col], labels=chart_df[label_col], autopct='%1.1f%%')
+
+                    elif chart_type == "Area":
+                        ax.plot(chart_df[label_col], chart_df[value_col])
+
+                    else:
+                        ax.bar(chart_df[label_col], chart_df[value_col])
+                        ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
+
                     plt.xticks(rotation=45)
                     plt.tight_layout()
+
+                    img_path = "temp_chart.png"
                     fig.savefig(img_path)
                     plt.close(fig)
 
