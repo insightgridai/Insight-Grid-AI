@@ -114,7 +114,7 @@ if st.session_state.mode == "summarize":
     c1, c2, c3, c4, c5 = st.columns(5)
 
     if c1.button("Region Revenue"):
-        selected_query = "Show total revenue by region as a bar chart"
+        selected_query = "Show total revenue by region as a pie chart"
 
     if c2.button("Monthly Trend"):
         selected_query = "Show monthly sales trend"
@@ -126,7 +126,7 @@ if st.session_state.mode == "summarize":
         selected_query = "Show revenue by store as a bar chart"
 
     if c5.button("Daily Transactions"):
-        selected_query = "Show daily transaction count for the latest year in the database"
+        selected_query = "Show daily transaction count"
 
 else:
     option = st.selectbox("", [
@@ -135,7 +135,7 @@ else:
         "Show top 10 Stores by Average order value",
         "Show Top 10 Manufacturing Countries By Total Quantity sold",
         "Show Top 10 Suppliers by Total revenue Contribution",
-        "Match columns and data types between Store_Dim and Item_Dim (exact or similar)"
+        "Find common columns between Store_Dim and Item_Dim"
     ])
 
     if option != "Select...":
