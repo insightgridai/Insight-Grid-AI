@@ -17,7 +17,7 @@ st.set_page_config(page_title="Insight Grid AI", layout="wide")
 
 
 # =====================================================
-# BACKGROUND + BUTTON STYLE (ONLY UI CHANGE)
+# BACKGROUND + BUTTON STYLE
 # =====================================================
 def get_base64_image(image_path):
     try:
@@ -168,13 +168,6 @@ run_clicked = st.button("Run Analysis")
 # =====================================================
 # KPI
 # =====================================================
-						   
-			  
-				
-					
-													
-
-
 def show_kpis(df):
     num_cols = df.select_dtypes(include="number").columns
     if len(num_cols) == 0:
@@ -182,7 +175,6 @@ def show_kpis(df):
 
     col = num_cols[-1]
 
-							  
     st.metric("Total", f"{df[col].sum():,.0f}")
     st.metric("Avg", f"{df[col].mean():,.0f}")
     st.metric("Max", f"{df[col].max():,.0f}")
@@ -238,23 +230,10 @@ def render_response(response):
             st.session_state.last_df = df
             st.session_state.last_response = response
 
-										  
-
-							
-						 
-
-													   
-
-							
-															  
-
             st.markdown("### 📊 Data")
             st.dataframe(df)
-					   
-											 
-												 
-				 
 
+            # ✅ ONLY FOR SUMMARIZE
             if st.session_state.mode == "summarize":
                 show_kpis(df)
                 show_visualization(df)
@@ -296,28 +275,17 @@ if run_clicked:
 # =====================================================
 if st.session_state.last_df is not None and not run_clicked:
 
-								 
-
-								  
-
-				 
-
-													  
-
     st.markdown("### 📊 Data")
     st.dataframe(st.session_state.last_df)
-			   
-									 
-										 
-		 
 
+    # ✅ ONLY FOR SUMMARIZE
     if st.session_state.mode == "summarize":
         show_kpis(st.session_state.last_df)
         show_visualization(st.session_state.last_df)
 
 
 # =====================================================
-# DOWNLOAD REPORT (✅ SAFE FIX - NOTHING BREAKS)
+# DOWNLOAD REPORT (FIXED)
 # =====================================================
 if st.session_state.last_response:
 
@@ -329,13 +297,11 @@ if st.session_state.last_response:
         end = st.session_state.last_response.rfind("}") + 1
         parsed = json.loads(st.session_state.last_response[start:end])
 
-        # ===== TITLE =====
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, "Insight Grid AI Report", ln=True)
 
         pdf.ln(5)
 
-        # ===== QUERY =====
         pdf.set_font("Arial", "B", 12)
         pdf.cell(0, 8, "Query:", ln=True)
 
@@ -344,13 +310,11 @@ if st.session_state.last_response:
 
         pdf.ln(5)
 
-        # ===== TABLE RESPONSE =====
         if parsed["type"] == "table":
 
             columns = parsed["columns"]
             data = parsed["data"]
 
-            # ===== SUMMARY =====
             pdf.set_font("Arial", "B", 12)
             pdf.cell(0, 8, "Summary:", ln=True)
 
@@ -359,7 +323,6 @@ if st.session_state.last_response:
 
             pdf.ln(3)
 
-            # ===== SIMPLE TABLE (NO OVERFLOW, NO BREAK) =====
             col_width = 180 / len(columns)
 
             pdf.set_font("Arial", "B", 10)
@@ -370,52 +333,38 @@ if st.session_state.last_response:
             pdf.set_font("Arial", size=9)
             for row in data:
                 for item in row:
-                    text = str(item)[:25]  # ✅ prevent overflow
-                    pdf.cell(col_width, 8, text, border=1)
+                    pdf.cell(col_width, 8, str(item)[:25], border=1)
                 pdf.ln()
 
             pdf.ln(5)
 
-            # ===== CHART (RESPECT UI + FIX Y AXIS) =====
-            try:
-                df = pd.DataFrame(data, columns=columns)
+            # ✅ ONLY FOR SUMMARIZE (FIX)
+            if st.session_state.mode == "summarize":
+                try:
+                    df = pd.DataFrame(data, columns=columns)
 
-                num_cols = df.select_dtypes(include="number").columns
-                if len(num_cols) > 0:
-                    value_col = num_cols[-1]
-                    label_col = [c for c in df.columns if c != value_col][0]
+                    num_cols = df.select_dtypes(include="number").columns
+                    if len(num_cols) > 0:
+                        value_col = num_cols[-1]
+                        label_col = [c for c in df.columns if c != value_col][0]
 
-                    chart_df = df.groupby(label_col)[value_col].sum().reset_index()
+                        chart_df = df.groupby(label_col)[value_col].sum().reset_index()
 
-                    import matplotlib.ticker as ticker
-
-                    fig, ax = plt.subplots()
-
-                    chart_type = st.session_state.get("chart_selector", "Bar")
-
-                    if chart_type == "Pie":
-                        ax.pie(chart_df[value_col], labels=chart_df[label_col], autopct='%1.1f%%')
-
-                    elif chart_type == "Area":
-                        ax.plot(chart_df[label_col], chart_df[value_col])
-
-                    else:
+                        fig, ax = plt.subplots()
                         ax.bar(chart_df[label_col], chart_df[value_col])
-                        ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
 
-                    plt.xticks(rotation=45)
-                    plt.tight_layout()
+                        plt.xticks(rotation=45)
+                        plt.tight_layout()
 
-                    img_path = "temp_chart.png"
-                    fig.savefig(img_path)
-                    plt.close(fig)
+                        img_path = "temp_chart.png"
+                        fig.savefig(img_path)
+                        plt.close(fig)
 
-                    pdf.image(img_path, x=10, w=180)
+                        pdf.image(img_path, x=10, w=180)
 
-            except:
-                pass
+                except:
+                    pass
 
-        # ===== TEXT RESPONSE =====
         elif parsed["type"] == "text":
 
             pdf.set_font("Arial", "B", 12)
