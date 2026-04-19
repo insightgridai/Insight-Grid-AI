@@ -13,7 +13,10 @@ from db.connection import get_db_connection_dynamic
 # -------------------------------------------------
 # PAGE CONFIG
 # -------------------------------------------------
-st.set_page_config(page_title="Insight Grid AI", layout="wide")
+st.set_page_config(
+    page_title="Insight Grid AI",
+    layout="wide"
+)
 
 st.title("🤖 Insight Grid AI")
 st.caption("Where Data, Agents and Decisions Connect")
@@ -28,7 +31,9 @@ defaults = {
     "last_df": None,
     "last_response": "",
     "followups": [],
-    "chart_df": None
+    "chart_df": None,
+    "query_text": "",
+    "auto_run": False
 }
 
 for k, v in defaults.items():
@@ -37,7 +42,7 @@ for k, v in defaults.items():
 
 
 # -------------------------------------------------
-# RESPONSE PARSER
+# PARSE RESPONSE
 # -------------------------------------------------
 def parse_response(response):
     try:
@@ -102,11 +107,12 @@ else:
 
 
 # -------------------------------------------------
-# QUERY
+# QUERY BOX
 # -------------------------------------------------
 query = st.text_area(
     "Ask your business question",
     height=120,
+    key="query_text",
     placeholder="Show top 10 customers for latest year"
 )
 
@@ -114,14 +120,14 @@ run = st.button("🚀 Run Analysis")
 
 
 # -------------------------------------------------
-# VISUAL FUNCTION
+# VISUAL
 # -------------------------------------------------
 def show_visual(df):
 
     num_cols = df.select_dtypes(include="number").columns
 
     if len(num_cols) == 0:
-        return
+        return None
 
     value_col = num_cols[-1]
     label_col = [c for c in df.columns if c != value_col][0]
@@ -149,9 +155,13 @@ def show_visual(df):
 
 
 # -------------------------------------------------
-# RUN QUERY
+# RUN LOGIC
 # -------------------------------------------------
-if run:
+should_run = run or st.session_state.auto_run
+
+if should_run:
+
+    st.session_state.auto_run = False
 
     if not st.session_state.db_connected:
         st.error("Please connect database first.")
@@ -164,7 +174,9 @@ if run:
         )
 
         result = app.invoke({
-            "messages": [HumanMessage(content=query)],
+            "messages": [
+                HumanMessage(content=st.session_state.query_text)
+            ],
             "step": 0
         })
 
@@ -189,7 +201,14 @@ if run:
             st.session_state.last_df = df
             st.session_state.chart_df = df
 
-        st.session_state.followups = get_followup_questions(query)
+        elif parsed and parsed["type"] == "text":
+
+            st.session_state.last_df = None
+            st.session_state.chart_df = None
+
+        st.session_state.followups = get_followup_questions(
+            st.session_state.query_text
+        )
 
 
 # -------------------------------------------------
@@ -198,6 +217,7 @@ if run:
 if st.session_state.last_df is not None:
 
     st.subheader("📊 Result")
+
     st.dataframe(
         st.session_state.last_df,
         use_container_width=True
@@ -205,25 +225,33 @@ if st.session_state.last_df is not None:
 
 
 # -------------------------------------------------
-# SHOW PERSISTENT VISUAL
+# SHOW CHART
 # -------------------------------------------------
 fig = None
 
 if st.session_state.chart_df is not None:
 
     st.subheader("📈 Interactive Visual")
-    fig = show_visual(st.session_state.chart_df)
+
+    fig = show_visual(
+        st.session_state.chart_df
+    )
 
 
 # -------------------------------------------------
-# FOLLOWUPS
+# FOLLOW UP QUESTIONS
 # -------------------------------------------------
 if st.session_state.followups:
 
     st.subheader("💡 Follow-up Questions")
 
-    for q in st.session_state.followups:
-        st.button(q)
+    for i, q in enumerate(st.session_state.followups):
+
+        if st.button(q, key=f"fq_{i}"):
+
+            st.session_state.query_text = q
+            st.session_state.auto_run = True
+            st.rerun()
 
 
 # -------------------------------------------------
@@ -247,7 +275,11 @@ if st.session_state.last_response:
         pdf.ln(5)
 
         pdf.set_font("Arial", "", 11)
-        pdf.multi_cell(0, 8, f"Query: {query}")
+        pdf.multi_cell(
+            0,
+            8,
+            f"Query: {st.session_state.query_text}"
+        )
 
         pdf.ln(5)
 
@@ -261,7 +293,12 @@ if st.session_state.last_response:
             pdf.set_font("Arial", "B", 10)
 
             for col in columns:
-                pdf.cell(col_width, 8, str(col), border=1)
+                pdf.cell(
+                    col_width,
+                    8,
+                    str(col),
+                    border=1
+                )
 
             pdf.ln()
 
@@ -278,13 +315,29 @@ if st.session_state.last_response:
                 pdf.ln()
 
             if fig:
-                fig.write_image("chart.png")
-                pdf.ln(8)
-                pdf.image("chart.png", x=10, w=190)
+                try:
+                    fig.write_image("chart.png")
+                    pdf.ln(8)
+                    pdf.image(
+                        "chart.png",
+                        x=10,
+                        w=190
+                    )
+                except:
+                    pass
+
+        elif parsed["type"] == "text":
+
+            pdf.multi_cell(
+                0,
+                8,
+                parsed["content"]
+            )
 
         pdf.output("report.pdf")
 
         with open("report.pdf", "rb") as f:
+
             st.download_button(
                 "📄 Download Report",
                 data=f,
