@@ -28,6 +28,7 @@ def get_base64_image(image_path):
     with open(image_path, "rb") as img:
         return base64.b64encode(img.read()).decode()
 
+
 bg_img = get_base64_image("assets/backgroud6.jfif")
 
 st.markdown(
@@ -103,7 +104,7 @@ def parse_response(response):
 
 
 # -------------------------------------------------
-# DB POPUP (FIXED)
+# DB POPUP (PASSWORD SAVE FIXED)
 # -------------------------------------------------
 @st.dialog("Connect to Database")
 def db_popup():
@@ -111,7 +112,6 @@ def db_popup():
     credential_folder = "credentials"
     saved_connections = {}
 
-    # Read credentials folder
     if os.path.exists(credential_folder):
 
         for file in os.listdir(credential_folder):
@@ -139,7 +139,6 @@ def db_popup():
                 except:
                     pass
 
-    # Dropdown options
     options = ["Manual Entry"] + list(
         saved_connections.keys()
     )
@@ -149,13 +148,12 @@ def db_popup():
         options
     )
 
-    # Defaults
     host = ""
     port = "5432"
     database = ""
     user = ""
+    pwd = ""
 
-    # Auto fill selected
     if selected != "Manual Entry":
 
         cfg = saved_connections[selected]
@@ -164,6 +162,7 @@ def db_popup():
         port = str(cfg.get("port", "5432"))
         database = cfg.get("database", "")
         user = cfg.get("user", "")
+        pwd = cfg.get("password", "")
 
     st.markdown("### Edit Connection")
 
@@ -189,12 +188,13 @@ def db_popup():
 
     pwd = st.text_input(
         "Password",
+        value=pwd,
         type="password"
     )
 
     c1, c2 = st.columns(2)
 
-    # Connect
+    # CONNECT
     with c1:
 
         if st.button(
@@ -233,7 +233,7 @@ def db_popup():
             except Exception as e:
                 st.error(str(e))
 
-    # Save / Update
+    # SAVE / UPDATE
     with c2:
 
         if st.button(
@@ -260,7 +260,8 @@ def db_popup():
                     "host": host,
                     "port": port,
                     "database": database,
-                    "user": user
+                    "user": user,
+                    "password": pwd
                 }
 
                 with open(
@@ -348,38 +349,18 @@ def show_visual(df):
     )
 
     if chart == "Bar":
-        fig = px.bar(
-            df,
-            x=label_col,
-            y=value_col
-        )
+        fig = px.bar(df, x=label_col, y=value_col)
 
     elif chart == "Line":
-        fig = px.line(
-            df,
-            x=label_col,
-            y=value_col
-        )
+        fig = px.line(df, x=label_col, y=value_col)
 
     elif chart == "Pie":
-        fig = px.pie(
-            df,
-            names=label_col,
-            values=value_col
-        )
+        fig = px.pie(df, names=label_col, values=value_col)
 
     else:
-        fig = px.treemap(
-            df,
-            path=[label_col],
-            values=value_col
-        )
+        fig = px.treemap(df, path=[label_col], values=value_col)
 
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
+    st.plotly_chart(fig, use_container_width=True)
     return fig
 
 
@@ -422,9 +403,7 @@ if should_run:
 
         st.session_state.last_response = final_text
 
-        parsed = parse_response(
-            final_text
-        )
+        parsed = parse_response(final_text)
 
         if parsed:
 
@@ -443,10 +422,8 @@ if should_run:
                 st.session_state.last_df = None
                 st.session_state.chart_df = None
 
-        st.session_state.followups = (
-            get_followup_questions(
-                st.session_state.query_text
-            )
+        st.session_state.followups = get_followup_questions(
+            st.session_state.query_text
         )
 
 
@@ -511,17 +488,9 @@ if st.session_state.last_response:
 
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_auto_page_break(
-            True,
-            15
-        )
+        pdf.set_auto_page_break(True, 15)
 
-        pdf.set_font(
-            "Arial",
-            "B",
-            16
-        )
-
+        pdf.set_font("Arial", "B", 16)
         pdf.cell(
             0,
             10,
@@ -531,12 +500,7 @@ if st.session_state.last_response:
 
         pdf.ln(5)
 
-        pdf.set_font(
-            "Arial",
-            "",
-            11
-        )
-
+        pdf.set_font("Arial", "", 11)
         pdf.multi_cell(
             0,
             8,
@@ -552,11 +516,7 @@ if st.session_state.last_response:
 
             col_width = 190 / len(columns)
 
-            pdf.set_font(
-                "Arial",
-                "B",
-                10
-            )
+            pdf.set_font("Arial", "B", 10)
 
             for col in columns:
                 pdf.cell(
@@ -568,11 +528,7 @@ if st.session_state.last_response:
 
             pdf.ln()
 
-            pdf.set_font(
-                "Arial",
-                "",
-                9
-            )
+            pdf.set_font("Arial", "", 9)
 
             for row in data:
 
@@ -588,20 +544,14 @@ if st.session_state.last_response:
                 pdf.ln()
 
             if fig:
-
                 try:
-                    fig.write_image(
-                        "chart.png"
-                    )
-
+                    fig.write_image("chart.png")
                     pdf.ln(8)
-
                     pdf.image(
                         "chart.png",
                         x=10,
                         w=190
                     )
-
                 except:
                     pass
 
@@ -613,14 +563,9 @@ if st.session_state.last_response:
                 parsed["content"]
             )
 
-        pdf.output(
-            "report.pdf"
-        )
+        pdf.output("report.pdf")
 
-        with open(
-            "report.pdf",
-            "rb"
-        ) as f:
+        with open("report.pdf", "rb") as f:
 
             st.download_button(
                 "📄 Download Report",
