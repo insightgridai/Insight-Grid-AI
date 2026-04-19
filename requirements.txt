@@ -6,3 +6,4 @@ langgraph
 fpdf
 matplotlib
 plotly.express
+Kaleido
