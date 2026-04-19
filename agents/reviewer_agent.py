@@ -1,78 +1,52 @@
-from typing import TypedDict, Annotated
+# -----------------------------------------
+# Convert final output to JSON
+# -----------------------------------------
 
+from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain_core.messages import AnyMessage, SystemMessage
-
 from langchain_openai import ChatOpenAI
 
 
-# ---------------------------------------------------
-# STATE
-# ---------------------------------------------------
 class ReviewerState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
 
-# ---------------------------------------------------
-# MAIN APP
-# ---------------------------------------------------
 def get_reviewer_app():
 
     llm = ChatOpenAI(model="gpt-4o-mini")
 
-    system_prompt = """
-You are a final reviewer agent.
+    prompt = """
+Convert final response into JSON only.
 
-Your responsibility:
-Convert previous output into strict valid JSON.
-
-RULES:
-
-1. If tabular result exists:
-
+Table:
 {
-  "type": "table",
-  "columns": ["col1","col2"],
-  "data": [
-    ["v1","v2"]
-  ]
+"type":"table",
+"columns":["A"],
+"data":[["x"]]
 }
 
-2. If explanation needed:
-
+Text:
 {
-  "type": "text",
-  "content": "message"
+"type":"text",
+"content":"..."
 }
-
-3. No markdown
-4. No extra text
-5. Must be valid JSON only
-6. Prefer table whenever rows exist
 """
 
-    system_message = [
-        SystemMessage(content=system_prompt)
-    ]
+    sm = [SystemMessage(content=prompt)]
 
+    def reviewer(state):
 
-    def reviewer(state: ReviewerState):
+        r = llm.invoke(sm + state["messages"])
 
-        response = llm.invoke(
-            system_message + state["messages"]
-        )
+        return {"messages":[r]}
 
-        return {
-            "messages": [response]
-        }
+    g = StateGraph(ReviewerState)
 
+    g.add_node("reviewer", reviewer)
 
-    graph = StateGraph(ReviewerState)
+    g.add_edge(START, "reviewer")
+    g.add_edge("reviewer", END)
 
-    graph.add_node("reviewer", reviewer)
-
-    graph.add_edge(START, "reviewer")
-    graph.add_edge("reviewer", END)
-
-    return graph.compile()
+    return g.compile()
