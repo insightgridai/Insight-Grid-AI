@@ -1,16 +1,41 @@
-# db/connection.py
-
 import psycopg2
-from config.settings import Settings
 
+
+# -----------------------------------------
+# OLD METHOD (OPTIONAL BACKWARD SUPPORT)
+# -----------------------------------------
 def get_db_connection():
-    Settings.validate()
+    """
+    Optional old static method.
+    Keep only if older files still use it.
+    """
+    raise Exception(
+        "Use get_db_connection_dynamic() instead."
+    )
+
+
+# -----------------------------------------
+# NEW DYNAMIC CONNECTION
+# -----------------------------------------
+def get_db_connection_dynamic(config: dict):
+    """
+    Dynamic PostgreSQL connection from popup UI.
+
+    Expected config:
+    {
+        "host": "...",
+        "port": "5432",
+        "database": "...",
+        "user": "...",
+        "password": "..."
+    }
+    """
 
     return psycopg2.connect(
-        host=Settings.DB_HOST,
-        database=Settings.DB_NAME,
-        user=Settings.DB_USER,
-        password=Settings.DB_PASSWORD,
-        port=Settings.DB_PORT,
+        host=config["host"],
+        port=config["port"],
+        database=config["database"],
+        user=config["user"],
+        password=config["password"],
         sslmode="require"
     )
