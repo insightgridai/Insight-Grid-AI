@@ -3,7 +3,7 @@ import pandas as pd
 import json
 import plotly.express as px
 from fpdf import FPDF
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 import base64
 import os
 
@@ -58,6 +58,57 @@ st.markdown(
         background-color: rgba(255,255,255,0.06) !important;
         color: white !important;
     }}
+
+    /* Memory toggle pill styling */
+    .memory-toggle-container {{
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 14px;
+        background: rgba(255,255,255,0.07);
+        border-radius: 30px;
+        border: 1px solid rgba(255,255,255,0.15);
+        width: fit-content;
+        margin-bottom: 1rem;
+    }}
+
+    .memory-badge {{
+        font-size: 12px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-weight: 600;
+    }}
+
+    .memory-on {{
+        background: #1db954;
+        color: white;
+    }}
+
+    .memory-off {{
+        background: #888;
+        color: white;
+    }}
+
+    /* Chat history styling */
+    .chat-bubble-user {{
+        background: rgba(100, 149, 237, 0.2);
+        border-left: 3px solid #6495ED;
+        padding: 10px 14px;
+        border-radius: 8px;
+        margin: 6px 0;
+        font-size: 14px;
+        color: #dce8ff;
+    }}
+
+    .chat-bubble-ai {{
+        background: rgba(255,255,255,0.06);
+        border-left: 3px solid #aaa;
+        padding: 10px 14px;
+        border-radius: 8px;
+        margin: 6px 0;
+        font-size: 14px;
+        color: #eee;
+    }}
     </style>
     """,
     unsafe_allow_html=True
@@ -83,7 +134,11 @@ defaults = {
     "chart_df": None,
     "query_text": "",
     "pending_query": "",
-    "auto_run": False
+    "auto_run": False,
+    # Memory feature
+    "memory_enabled": True,
+    "conversation_history": [],   # list of {"role": "user"|"ai", "content": str}
+    "memory_messages": [],        # LangChain message objects for agent
 }
 
 for k, v in defaults.items():
@@ -104,7 +159,7 @@ def parse_response(response):
 
 
 # -------------------------------------------------
-# DB POPUP (PASSWORD SAVE FIXED)
+# DB POPUP
 # -------------------------------------------------
 @st.dialog("Connect to Database")
 def db_popup():
@@ -113,40 +168,20 @@ def db_popup():
     saved_connections = {}
 
     if os.path.exists(credential_folder):
-
         for file in os.listdir(credential_folder):
-
             if file.endswith(".json"):
-
                 try:
                     with open(
-                        os.path.join(
-                            credential_folder,
-                            file
-                        ),
-                        "r"
+                        os.path.join(credential_folder, file), "r"
                     ) as f:
-
                         data = json.load(f)
-
-                    name = file.replace(
-                        ".json",
-                        ""
-                    )
-
+                    name = file.replace(".json", "")
                     saved_connections[name] = data
-
                 except:
                     pass
 
-    options = ["Manual Entry"] + list(
-        saved_connections.keys()
-    )
-
-    selected = st.selectbox(
-        "Saved Connections",
-        options
-    )
+    options = ["Manual Entry"] + list(saved_connections.keys())
+    selected = st.selectbox("Saved Connections", options)
 
     host = ""
     port = "5432"
@@ -155,9 +190,7 @@ def db_popup():
     pwd = ""
 
     if selected != "Manual Entry":
-
         cfg = saved_connections[selected]
-
         host = cfg.get("host", "")
         port = str(cfg.get("port", "5432"))
         database = cfg.get("database", "")
@@ -165,45 +198,17 @@ def db_popup():
         pwd = cfg.get("password", "")
 
     st.markdown("### Edit Connection")
-
-    host = st.text_input(
-        "Host",
-        value=host
-    )
-
-    port = st.text_input(
-        "Port",
-        value=port
-    )
-
-    database = st.text_input(
-        "Database",
-        value=database
-    )
-
-    user = st.text_input(
-        "Username",
-        value=user
-    )
-
-    pwd = st.text_input(
-        "Password",
-        value=pwd,
-        type="password"
-    )
+    host = st.text_input("Host", value=host)
+    port = st.text_input("Port", value=port)
+    database = st.text_input("Database", value=database)
+    user = st.text_input("Username", value=user)
+    pwd = st.text_input("Password", value=pwd, type="password")
 
     c1, c2 = st.columns(2)
 
-    # CONNECT
     with c1:
-
-        if st.button(
-            "🔌 Connect Now",
-            use_container_width=True
-        ):
-
+        if st.button("🔌 Connect Now", use_container_width=True):
             try:
-
                 config = {
                     "host": host,
                     "port": port,
@@ -211,51 +216,24 @@ def db_popup():
                     "user": user,
                     "password": pwd
                 }
-
-                conn = get_db_connection_dynamic(
-                    config
-                )
-
+                conn = get_db_connection_dynamic(config)
                 cur = conn.cursor()
                 cur.execute("SELECT 1")
                 cur.close()
                 conn.close()
-
                 st.session_state.db_connected = True
                 st.session_state.db_config = config
-
-                st.success(
-                    "Connected Successfully ✅"
-                )
-
+                st.success("Connected Successfully ✅")
                 st.rerun()
-
             except Exception as e:
                 st.error(str(e))
 
-    # SAVE / UPDATE
     with c2:
-
-        if st.button(
-            "💾 Save / Update",
-            use_container_width=True
-        ):
-
+        if st.button("💾 Save / Update", use_container_width=True):
             try:
-
-                if not os.path.exists(
-                    credential_folder
-                ):
-                    os.makedirs(
-                        credential_folder
-                    )
-
-                filename = (
-                    database
-                    if database
-                    else "new_connection"
-                )
-
+                if not os.path.exists(credential_folder):
+                    os.makedirs(credential_folder)
+                filename = database if database else "new_connection"
                 save_data = {
                     "host": host,
                     "port": port,
@@ -263,48 +241,99 @@ def db_popup():
                     "user": user,
                     "password": pwd
                 }
-
                 with open(
-                    os.path.join(
-                        credential_folder,
-                        f"{filename}.json"
-                    ),
-                    "w"
+                    os.path.join(credential_folder, f"{filename}.json"), "w"
                 ) as f:
-
-                    json.dump(
-                        save_data,
-                        f,
-                        indent=4
-                    )
-
-                st.success(
-                    "Saved Successfully ✅"
-                )
-
+                    json.dump(save_data, f, indent=4)
+                st.success("Saved Successfully ✅")
                 st.rerun()
-
             except Exception as e:
                 st.error(str(e))
 
 
 # -------------------------------------------------
-# TOP BAR
+# TOP BAR  (DB connect + Memory Toggle)
 # -------------------------------------------------
-c1, c2 = st.columns([8, 2])
+col_left, col_mid, col_right = st.columns([5, 3, 2])
 
-with c2:
+with col_right:
     if st.button("🔌 Connect DB"):
         db_popup()
 
-if st.session_state.db_connected:
-    st.success("Connected ✅")
+with col_mid:
+    # Memory toggle using a radio styled as a pill switcher
+    memory_choice = st.radio(
+        "💬 Follow-up Mode",
+        options=["🧠 With Memory", "🔄 Without Memory"],
+        index=0 if st.session_state.memory_enabled else 1,
+        horizontal=True,
+        help=(
+            "With Memory: follow-up questions build on previous answers (like ChatGPT).\n"
+            "Without Memory: each question is treated as a fresh, independent query."
+        )
+    )
+    st.session_state.memory_enabled = (memory_choice == "🧠 With Memory")
+
+with col_left:
+    if st.session_state.db_connected:
+        st.success("Connected ✅")
+    else:
+        st.warning("Not Connected")
+
+# Show memory status badge
+if st.session_state.memory_enabled:
+    st.markdown(
+        '<div class="memory-toggle-container">'
+        '<span>Conversation Mode:</span>'
+        '<span class="memory-badge memory-on">🧠 Memory ON — follow-ups carry context</span>'
+        '</div>',
+        unsafe_allow_html=True
+    )
+    # Clear memory button shown only when memory is on
+    if st.session_state.conversation_history:
+        if st.button("🗑️ Clear Conversation Memory"):
+            st.session_state.conversation_history = []
+            st.session_state.memory_messages = []
+            st.success("Memory cleared.")
+            st.rerun()
 else:
-    st.warning("Not Connected")
+    st.markdown(
+        '<div class="memory-toggle-container">'
+        '<span>Conversation Mode:</span>'
+        '<span class="memory-badge memory-off">🔄 Memory OFF — each query is independent</span>'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
 
 # -------------------------------------------------
-# APPLY FOLLOWUP
+# CONVERSATION HISTORY DISPLAY (Memory mode only)
+# -------------------------------------------------
+if st.session_state.memory_enabled and st.session_state.conversation_history:
+    with st.expander("📜 Conversation History", expanded=False):
+        for turn in st.session_state.conversation_history:
+            if turn["role"] == "user":
+                st.markdown(
+                    f'<div class="chat-bubble-user">🧑 <b>You:</b> {turn["content"]}</div>',
+                    unsafe_allow_html=True
+                )
+            else:
+                # Show a short summary for AI turns (avoid dumping raw JSON)
+                parsed = parse_response(turn["content"])
+                if parsed and parsed.get("type") == "table":
+                    preview = f"[Table: {len(parsed.get('data', []))} rows, columns: {', '.join(parsed.get('columns', []))}]"
+                elif parsed and parsed.get("type") == "text":
+                    preview = parsed.get("content", turn["content"])[:200]
+                else:
+                    preview = turn["content"][:200]
+                st.markdown(
+                    f'<div class="chat-bubble-ai">🤖 <b>AI:</b> {preview}</div>',
+                    unsafe_allow_html=True
+                )
+
+
+# -------------------------------------------------
+# APPLY FOLLOWUP (pending query from button click)
 # -------------------------------------------------
 if st.session_state.pending_query:
     st.session_state.query_text = st.session_state.pending_query
@@ -328,19 +357,12 @@ run = st.button("🚀 Run Analysis")
 # VISUALS
 # -------------------------------------------------
 def show_visual(df):
-
-    num_cols = df.select_dtypes(
-        include="number"
-    ).columns
-
+    num_cols = df.select_dtypes(include="number").columns
     if len(num_cols) == 0:
         return None
 
     value_col = num_cols[-1]
-    label_col = [
-        c for c in df.columns
-        if c != value_col
-    ][0]
+    label_col = [c for c in df.columns if c != value_col][0]
 
     chart = st.selectbox(
         "Choose Visual",
@@ -350,13 +372,10 @@ def show_visual(df):
 
     if chart == "Bar":
         fig = px.bar(df, x=label_col, y=value_col)
-
     elif chart == "Line":
         fig = px.line(df, x=label_col, y=value_col)
-
     elif chart == "Pie":
         fig = px.pie(df, names=label_col, values=value_col)
-
     else:
         fig = px.treemap(df, path=[label_col], values=value_col)
 
@@ -365,12 +384,28 @@ def show_visual(df):
 
 
 # -------------------------------------------------
+# BUILD MESSAGES FOR AGENT
+# -------------------------------------------------
+def build_agent_messages(current_query: str):
+    """
+    With Memory ON  → prepend full conversation history as LangChain messages.
+    With Memory OFF → only the current query, no history.
+    """
+    if st.session_state.memory_enabled and st.session_state.memory_messages:
+        # Replay prior messages so the agent has full context
+        messages = list(st.session_state.memory_messages)
+        messages.append(HumanMessage(content=current_query))
+    else:
+        messages = [HumanMessage(content=current_query)]
+    return messages
+
+
+# -------------------------------------------------
 # RUN QUERY
 # -------------------------------------------------
 should_run = run or st.session_state.auto_run
 
 if should_run:
-
     st.session_state.auto_run = False
 
     if not st.session_state.db_connected:
@@ -379,65 +414,86 @@ if should_run:
 
     with st.spinner("Running AI Agents..."):
 
-        app = get_supervisor_app(
-            st.session_state.db_config
-        )
+        app = get_supervisor_app(st.session_state.db_config)
+
+        # Build message list depending on memory mode
+        agent_messages = build_agent_messages(st.session_state.query_text)
 
         result = app.invoke({
-            "messages": [
-                HumanMessage(
-                    content=st.session_state.query_text
-                )
-            ],
+            "messages": agent_messages,
             "step": 0
         })
 
         final_text = ""
-
-        for msg in reversed(
-            result["messages"]
-        ):
+        for msg in reversed(result["messages"]):
             if getattr(msg, "type", "") == "ai":
                 final_text = msg.content
                 break
 
         st.session_state.last_response = final_text
 
+        # ------------------------------------------
+        # UPDATE MEMORY
+        # ------------------------------------------
+        if st.session_state.memory_enabled:
+            # Append to human-readable history for display
+            st.session_state.conversation_history.append({
+                "role": "user",
+                "content": st.session_state.query_text
+            })
+            st.session_state.conversation_history.append({
+                "role": "ai",
+                "content": final_text
+            })
+            # Append LangChain message objects for agent replay
+            st.session_state.memory_messages.append(
+                HumanMessage(content=st.session_state.query_text)
+            )
+            st.session_state.memory_messages.append(
+                AIMessage(content=final_text)
+            )
+        else:
+            # Memory OFF — discard any history
+            st.session_state.conversation_history = []
+            st.session_state.memory_messages = []
+
+        # ------------------------------------------
+        # PARSE RESULT
+        # ------------------------------------------
         parsed = parse_response(final_text)
 
         if parsed:
-
             if parsed["type"] == "table":
-
-                df = pd.DataFrame(
-                    parsed["data"],
-                    columns=parsed["columns"]
-                )
-
+                df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
                 st.session_state.last_df = df
                 st.session_state.chart_df = df
-
             elif parsed["type"] == "text":
-
                 st.session_state.last_df = None
                 st.session_state.chart_df = None
 
-        st.session_state.followups = get_followup_questions(
-            st.session_state.query_text
-        )
+        # ------------------------------------------
+        # FOLLOW-UP QUESTIONS
+        # Include conversation context when memory is on
+        # ------------------------------------------
+        if st.session_state.memory_enabled and st.session_state.conversation_history:
+            # Pass last few exchanges as context so follow-ups are relevant
+            context_summary = " | ".join([
+                t["content"][:120]
+                for t in st.session_state.conversation_history[-4:]
+            ])
+            followup_input = f"{context_summary} | {st.session_state.query_text}"
+        else:
+            followup_input = st.session_state.query_text
+
+        st.session_state.followups = get_followup_questions(followup_input)
 
 
 # -------------------------------------------------
 # RESULT TABLE
 # -------------------------------------------------
 if st.session_state.last_df is not None:
-
     st.subheader("📊 Result")
-
-    st.dataframe(
-        st.session_state.last_df,
-        use_container_width=True
-    )
+    st.dataframe(st.session_state.last_df, use_container_width=True)
 
 
 # -------------------------------------------------
@@ -446,30 +502,29 @@ if st.session_state.last_df is not None:
 fig = None
 
 if st.session_state.chart_df is not None:
-
     st.subheader("📈 Interactive Visual")
-
-    fig = show_visual(
-        st.session_state.chart_df
-    )
+    fig = show_visual(st.session_state.chart_df)
 
 
 # -------------------------------------------------
 # FOLLOWUP QUESTIONS
 # -------------------------------------------------
 if st.session_state.followups:
+    mem_label = "🧠 Memory ON" if st.session_state.memory_enabled else "🔄 Memory OFF"
+    st.subheader(f"💡 Follow-up Questions  ({mem_label})")
 
-    st.subheader("💡 Follow-up Questions")
+    if st.session_state.memory_enabled:
+        st.caption(
+            "These follow-ups will remember your previous answers. "
+            "Click any to continue the conversation."
+        )
+    else:
+        st.caption(
+            "These follow-ups will run as fresh, independent queries with no prior context."
+        )
 
-    for i, q in enumerate(
-        st.session_state.followups
-    ):
-
-        if st.button(
-            q,
-            key=f"fq_{i}"
-        ):
-
+    for i, q in enumerate(st.session_state.followups):
+        if st.button(q, key=f"fq_{i}"):
             st.session_state.pending_query = q
             st.session_state.auto_run = True
             st.rerun()
@@ -480,93 +535,57 @@ if st.session_state.followups:
 # -------------------------------------------------
 if st.session_state.last_response:
 
-    parsed = parse_response(
-        st.session_state.last_response
-    )
+    parsed = parse_response(st.session_state.last_response)
 
     if parsed:
-
         pdf = FPDF()
         pdf.add_page()
         pdf.set_auto_page_break(True, 15)
 
         pdf.set_font("Arial", "B", 16)
-        pdf.cell(
-            0,
-            10,
-            "Insight Grid AI Report",
-            ln=True
-        )
-
+        pdf.cell(0, 10, "Insight Grid AI Report", ln=True)
         pdf.ln(5)
 
-        pdf.set_font("Arial", "", 11)
-        pdf.multi_cell(
-            0,
-            8,
-            f"Query: {st.session_state.query_text}"
-        )
+        # Show memory mode in report
+        pdf.set_font("Arial", "I", 10)
+        mode_label = "With Memory (contextual)" if st.session_state.memory_enabled else "Without Memory (independent)"
+        pdf.cell(0, 8, f"Follow-up Mode: {mode_label}", ln=True)
+        pdf.ln(3)
 
+        pdf.set_font("Arial", "", 11)
+        pdf.multi_cell(0, 8, f"Query: {st.session_state.query_text}")
         pdf.ln(5)
 
         if parsed["type"] == "table":
-
             columns = parsed["columns"]
             data = parsed["data"]
-
             col_width = 190 / len(columns)
 
             pdf.set_font("Arial", "B", 10)
-
             for col in columns:
-                pdf.cell(
-                    col_width,
-                    8,
-                    str(col),
-                    border=1
-                )
-
+                pdf.cell(col_width, 8, str(col), border=1)
             pdf.ln()
 
             pdf.set_font("Arial", "", 9)
-
             for row in data:
-
                 for item in row:
-
-                    pdf.cell(
-                        col_width,
-                        8,
-                        str(item)[:22],
-                        border=1
-                    )
-
+                    pdf.cell(col_width, 8, str(item)[:22], border=1)
                 pdf.ln()
 
             if fig:
                 try:
                     fig.write_image("chart.png")
                     pdf.ln(8)
-                    pdf.image(
-                        "chart.png",
-                        x=10,
-                        w=190
-                    )
+                    pdf.image("chart.png", x=10, w=190)
                 except:
                     pass
 
         elif parsed["type"] == "text":
-
-            pdf.multi_cell(
-                0,
-                8,
-                parsed["content"]
-            )
+            pdf.multi_cell(0, 8, parsed["content"])
 
         pdf.output("report.pdf")
 
         with open("report.pdf", "rb") as f:
-
             st.download_button(
                 "📄 Download Report",
                 data=f,
