@@ -5,6 +5,7 @@ import plotly.express as px
 from fpdf import FPDF
 from langchain_core.messages import HumanMessage
 import base64
+import os
 
 from agents.supervisor_agent import get_supervisor_app
 from agents.followup_agent import get_followup_questions
@@ -22,7 +23,6 @@ st.set_page_config(
 
 # -------------------------------------------------
 # BACKGROUND IMAGE
-# Save image in: assets/background.png
 # -------------------------------------------------
 def get_base64_image(image_path):
     with open(image_path, "rb") as img:
@@ -103,47 +103,188 @@ def parse_response(response):
 
 
 # -------------------------------------------------
-# DB POPUP
-# ONLY CHANGED THIS SECTION
+# DB POPUP (FIXED)
 # -------------------------------------------------
 @st.dialog("Connect to Database")
 def db_popup():
 
-    host_options = ["localhost", "127.0.0.1", "192.168.1.10"]
-    port_options = ["5432", "3306", "1433", "1521"]
-    db_options = ["sales_db", "finance_db", "hr_db"]
-    user_options = ["postgres", "admin", "user"]
+    credential_folder = "credentials"
+    saved_connections = {}
 
-    host = st.selectbox("Host", host_options)
-    port = st.selectbox("Port", port_options)
-    db = st.selectbox("Database", db_options)
-    user = st.selectbox("Username", user_options)
-    pwd = st.text_input("Password", type="password")
+    # Read credentials folder
+    if os.path.exists(credential_folder):
 
-    if st.button("Connect Now"):
+        for file in os.listdir(credential_folder):
 
-        try:
-            config = {
-                "host": host,
-                "port": port,
-                "database": db,
-                "user": user,
-                "password": pwd
-            }
+            if file.endswith(".json"):
 
-            conn = get_db_connection_dynamic(config)
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.close()
-            conn.close()
+                try:
+                    with open(
+                        os.path.join(
+                            credential_folder,
+                            file
+                        ),
+                        "r"
+                    ) as f:
 
-            st.session_state.db_connected = True
-            st.session_state.db_config = config
+                        data = json.load(f)
 
-            st.rerun()
+                    name = file.replace(
+                        ".json",
+                        ""
+                    )
 
-        except Exception as e:
-            st.error(str(e))
+                    saved_connections[name] = data
+
+                except:
+                    pass
+
+    # Dropdown options
+    options = ["Manual Entry"] + list(
+        saved_connections.keys()
+    )
+
+    selected = st.selectbox(
+        "Saved Connections",
+        options
+    )
+
+    # Defaults
+    host = ""
+    port = "5432"
+    database = ""
+    user = ""
+
+    # Auto fill selected
+    if selected != "Manual Entry":
+
+        cfg = saved_connections[selected]
+
+        host = cfg.get("host", "")
+        port = str(cfg.get("port", "5432"))
+        database = cfg.get("database", "")
+        user = cfg.get("user", "")
+
+    st.markdown("### Edit Connection")
+
+    host = st.text_input(
+        "Host",
+        value=host
+    )
+
+    port = st.text_input(
+        "Port",
+        value=port
+    )
+
+    database = st.text_input(
+        "Database",
+        value=database
+    )
+
+    user = st.text_input(
+        "Username",
+        value=user
+    )
+
+    pwd = st.text_input(
+        "Password",
+        type="password"
+    )
+
+    c1, c2 = st.columns(2)
+
+    # Connect
+    with c1:
+
+        if st.button(
+            "🔌 Connect Now",
+            use_container_width=True
+        ):
+
+            try:
+
+                config = {
+                    "host": host,
+                    "port": port,
+                    "database": database,
+                    "user": user,
+                    "password": pwd
+                }
+
+                conn = get_db_connection_dynamic(
+                    config
+                )
+
+                cur = conn.cursor()
+                cur.execute("SELECT 1")
+                cur.close()
+                conn.close()
+
+                st.session_state.db_connected = True
+                st.session_state.db_config = config
+
+                st.success(
+                    "Connected Successfully ✅"
+                )
+
+                st.rerun()
+
+            except Exception as e:
+                st.error(str(e))
+
+    # Save / Update
+    with c2:
+
+        if st.button(
+            "💾 Save / Update",
+            use_container_width=True
+        ):
+
+            try:
+
+                if not os.path.exists(
+                    credential_folder
+                ):
+                    os.makedirs(
+                        credential_folder
+                    )
+
+                filename = (
+                    database
+                    if database
+                    else "new_connection"
+                )
+
+                save_data = {
+                    "host": host,
+                    "port": port,
+                    "database": database,
+                    "user": user
+                }
+
+                with open(
+                    os.path.join(
+                        credential_folder,
+                        f"{filename}.json"
+                    ),
+                    "w"
+                ) as f:
+
+                    json.dump(
+                        save_data,
+                        f,
+                        indent=4
+                    )
+
+                st.success(
+                    "Saved Successfully ✅"
+                )
+
+                st.rerun()
+
+            except Exception as e:
+                st.error(str(e))
 
 
 # -------------------------------------------------
@@ -187,13 +328,18 @@ run = st.button("🚀 Run Analysis")
 # -------------------------------------------------
 def show_visual(df):
 
-    num_cols = df.select_dtypes(include="number").columns
+    num_cols = df.select_dtypes(
+        include="number"
+    ).columns
 
     if len(num_cols) == 0:
         return None
 
     value_col = num_cols[-1]
-    label_col = [c for c in df.columns if c != value_col][0]
+    label_col = [
+        c for c in df.columns
+        if c != value_col
+    ][0]
 
     chart = st.selectbox(
         "Choose Visual",
@@ -202,18 +348,38 @@ def show_visual(df):
     )
 
     if chart == "Bar":
-        fig = px.bar(df, x=label_col, y=value_col)
+        fig = px.bar(
+            df,
+            x=label_col,
+            y=value_col
+        )
 
     elif chart == "Line":
-        fig = px.line(df, x=label_col, y=value_col)
+        fig = px.line(
+            df,
+            x=label_col,
+            y=value_col
+        )
 
     elif chart == "Pie":
-        fig = px.pie(df, names=label_col, values=value_col)
+        fig = px.pie(
+            df,
+            names=label_col,
+            values=value_col
+        )
 
     else:
-        fig = px.treemap(df, path=[label_col], values=value_col)
+        fig = px.treemap(
+            df,
+            path=[label_col],
+            values=value_col
+        )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
     return fig
 
 
@@ -238,21 +404,27 @@ if should_run:
 
         result = app.invoke({
             "messages": [
-                HumanMessage(content=st.session_state.query_text)
+                HumanMessage(
+                    content=st.session_state.query_text
+                )
             ],
             "step": 0
         })
 
         final_text = ""
 
-        for msg in reversed(result["messages"]):
+        for msg in reversed(
+            result["messages"]
+        ):
             if getattr(msg, "type", "") == "ai":
                 final_text = msg.content
                 break
 
         st.session_state.last_response = final_text
 
-        parsed = parse_response(final_text)
+        parsed = parse_response(
+            final_text
+        )
 
         if parsed:
 
@@ -271,8 +443,10 @@ if should_run:
                 st.session_state.last_df = None
                 st.session_state.chart_df = None
 
-        st.session_state.followups = get_followup_questions(
-            st.session_state.query_text
+        st.session_state.followups = (
+            get_followup_questions(
+                st.session_state.query_text
+            )
         )
 
 
@@ -310,9 +484,14 @@ if st.session_state.followups:
 
     st.subheader("💡 Follow-up Questions")
 
-    for i, q in enumerate(st.session_state.followups):
+    for i, q in enumerate(
+        st.session_state.followups
+    ):
 
-        if st.button(q, key=f"fq_{i}"):
+        if st.button(
+            q,
+            key=f"fq_{i}"
+        ):
 
             st.session_state.pending_query = q
             st.session_state.auto_run = True
@@ -332,14 +511,32 @@ if st.session_state.last_response:
 
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_auto_page_break(True, 15)
+        pdf.set_auto_page_break(
+            True,
+            15
+        )
 
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(0, 10, "Insight Grid AI Report", ln=True)
+        pdf.set_font(
+            "Arial",
+            "B",
+            16
+        )
+
+        pdf.cell(
+            0,
+            10,
+            "Insight Grid AI Report",
+            ln=True
+        )
 
         pdf.ln(5)
 
-        pdf.set_font("Arial", "", 11)
+        pdf.set_font(
+            "Arial",
+            "",
+            11
+        )
+
         pdf.multi_cell(
             0,
             8,
@@ -355,30 +552,56 @@ if st.session_state.last_response:
 
             col_width = 190 / len(columns)
 
-            pdf.set_font("Arial", "B", 10)
+            pdf.set_font(
+                "Arial",
+                "B",
+                10
+            )
 
             for col in columns:
-                pdf.cell(col_width, 8, str(col), border=1)
+                pdf.cell(
+                    col_width,
+                    8,
+                    str(col),
+                    border=1
+                )
 
             pdf.ln()
 
-            pdf.set_font("Arial", "", 9)
+            pdf.set_font(
+                "Arial",
+                "",
+                9
+            )
 
             for row in data:
+
                 for item in row:
+
                     pdf.cell(
                         col_width,
                         8,
                         str(item)[:22],
                         border=1
                     )
+
                 pdf.ln()
 
             if fig:
+
                 try:
-                    fig.write_image("chart.png")
+                    fig.write_image(
+                        "chart.png"
+                    )
+
                     pdf.ln(8)
-                    pdf.image("chart.png", x=10, w=190)
+
+                    pdf.image(
+                        "chart.png",
+                        x=10,
+                        w=190
+                    )
+
                 except:
                     pass
 
@@ -390,9 +613,14 @@ if st.session_state.last_response:
                 parsed["content"]
             )
 
-        pdf.output("report.pdf")
+        pdf.output(
+            "report.pdf"
+        )
 
-        with open("report.pdf", "rb") as f:
+        with open(
+            "report.pdf",
+            "rb"
+        ) as f:
 
             st.download_button(
                 "📄 Download Report",
