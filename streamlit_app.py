@@ -333,11 +333,11 @@ def db_popup():
 c1, c2 = st.columns([8, 2])
 
 with c2:
-    if st.button("🔌 Connect DB"):
+    if st.button("🔌 Connect to DataBase"):
         db_popup()
 
 if st.session_state.db_connected:
-    st.success("Connected ✅")
+    st.success("Connected Successfully ✅")
 else:
     st.warning("Not Connected")
 
