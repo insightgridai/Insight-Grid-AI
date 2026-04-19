@@ -33,6 +33,7 @@ defaults = {
     "followups": [],
     "chart_df": None,
     "query_text": "",
+    "pending_query": "",
     "auto_run": False
 }
 
@@ -42,7 +43,7 @@ for k, v in defaults.items():
 
 
 # -------------------------------------------------
-# PARSE RESPONSE
+# RESPONSE PARSER
 # -------------------------------------------------
 def parse_response(response):
     try:
@@ -60,7 +61,7 @@ def parse_response(response):
 def db_popup():
 
     host = st.text_input("Host")
-    port = st.text_input("Port", "5432")
+    port = st.text_input("Port", value="5432")
     db = st.text_input("Database")
     user = st.text_input("Username")
     pwd = st.text_input("Password", type="password")
@@ -107,6 +108,14 @@ else:
 
 
 # -------------------------------------------------
+# APPLY PENDING FOLLOWUP BEFORE WIDGET LOAD
+# -------------------------------------------------
+if st.session_state.pending_query:
+    st.session_state.query_text = st.session_state.pending_query
+    st.session_state.pending_query = ""
+
+
+# -------------------------------------------------
 # QUERY BOX
 # -------------------------------------------------
 query = st.text_area(
@@ -120,7 +129,7 @@ run = st.button("🚀 Run Analysis")
 
 
 # -------------------------------------------------
-# VISUAL
+# VISUALS
 # -------------------------------------------------
 def show_visual(df):
 
@@ -155,7 +164,7 @@ def show_visual(df):
 
 
 # -------------------------------------------------
-# RUN LOGIC
+# RUN QUERY
 # -------------------------------------------------
 should_run = run or st.session_state.auto_run
 
@@ -191,20 +200,22 @@ if should_run:
 
         parsed = parse_response(final_text)
 
-        if parsed and parsed["type"] == "table":
+        if parsed:
 
-            df = pd.DataFrame(
-                parsed["data"],
-                columns=parsed["columns"]
-            )
+            if parsed["type"] == "table":
 
-            st.session_state.last_df = df
-            st.session_state.chart_df = df
+                df = pd.DataFrame(
+                    parsed["data"],
+                    columns=parsed["columns"]
+                )
 
-        elif parsed and parsed["type"] == "text":
+                st.session_state.last_df = df
+                st.session_state.chart_df = df
 
-            st.session_state.last_df = None
-            st.session_state.chart_df = None
+            elif parsed["type"] == "text":
+
+                st.session_state.last_df = None
+                st.session_state.chart_df = None
 
         st.session_state.followups = get_followup_questions(
             st.session_state.query_text
@@ -225,7 +236,7 @@ if st.session_state.last_df is not None:
 
 
 # -------------------------------------------------
-# SHOW CHART
+# SHOW VISUAL
 # -------------------------------------------------
 fig = None
 
@@ -239,7 +250,7 @@ if st.session_state.chart_df is not None:
 
 
 # -------------------------------------------------
-# FOLLOW UP QUESTIONS
+# FOLLOWUP QUESTIONS
 # -------------------------------------------------
 if st.session_state.followups:
 
@@ -249,7 +260,7 @@ if st.session_state.followups:
 
         if st.button(q, key=f"fq_{i}"):
 
-            st.session_state.query_text = q
+            st.session_state.pending_query = q
             st.session_state.auto_run = True
             st.rerun()
 
@@ -293,12 +304,7 @@ if st.session_state.last_response:
             pdf.set_font("Arial", "B", 10)
 
             for col in columns:
-                pdf.cell(
-                    col_width,
-                    8,
-                    str(col),
-                    border=1
-                )
+                pdf.cell(col_width, 8, str(col), border=1)
 
             pdf.ln()
 
@@ -318,11 +324,7 @@ if st.session_state.last_response:
                 try:
                     fig.write_image("chart.png")
                     pdf.ln(8)
-                    pdf.image(
-                        "chart.png",
-                        x=10,
-                        w=190
-                    )
+                    pdf.image("chart.png", x=10, w=190)
                 except:
                     pass
 
