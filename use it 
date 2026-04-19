@@ -1,0 +1,612 @@
+# ============================================================
+# FULL PRODUCTION UPGRADE
+# INSIGHT GRID AI (FAST + MEMORY + SAVED DB + CLEAN ARCH)
+# ============================================================
+# IMPORTANT:
+# Create files exactly in same structure below.
+#
+# app/
+# ├── streamlit_app.py
+# ├── utils/
+# │   ├── parser.py
+# │   ├── cache.py
+# │   ├── memory.py
+# │   ├── db_store.py
+# │   └── pdf_export.py
+# ├── agents/
+# │   ├── analyst_agent.py
+# │   ├── expert_agent.py
+# │   ├── reviewer_agent.py
+# │   ├── followup_agent.py
+# │   └── supervisor_agent.py
+# ============================================================
+
+
+# ============================================================
+# FILE: utils/parser.py
+# ============================================================
+
+import json
+
+def parse_response(response):
+    try:
+        start = response.find("{")
+        end = response.rfind("}") + 1
+        return json.loads(response[start:end])
+    except:
+        return None
+
+
+
+# ============================================================
+# FILE: utils/cache.py
+# ============================================================
+
+import streamlit as st
+import base64
+
+@st.cache_data
+def load_bg(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
+
+# ============================================================
+# FILE: utils/memory.py
+# ============================================================
+
+from langchain_core.messages import HumanMessage
+
+def get_chat_messages(query, memory_on, history):
+    if memory_on:
+        msgs = history.copy()
+        msgs.append(HumanMessage(content=query))
+        return msgs
+    return [HumanMessage(content=query)]
+
+
+
+# ============================================================
+# FILE: utils/db_store.py
+# ============================================================
+
+import json
+import os
+
+FILE = "saved_connections.json"
+
+def load_connections():
+    if not os.path.exists(FILE):
+        return []
+    with open(FILE, "r") as f:
+        return json.load(f)
+
+def save_connection(data):
+    all_data = load_connections()
+    all_data.append(data)
+    with open(FILE, "w") as f:
+        json.dump(all_data, f, indent=2)
+
+def delete_connection(name):
+    all_data = load_connections()
+    all_data = [x for x in all_data if x["name"] != name]
+    with open(FILE, "w") as f:
+        json.dump(all_data, f, indent=2)
+
+
+
+# ============================================================
+# FILE: utils/pdf_export.py
+# ============================================================
+
+from fpdf import FPDF
+
+def create_pdf(parsed, query):
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(True, 15)
+
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, "Insight Grid AI Report", ln=True)
+
+    pdf.ln(5)
+
+    pdf.set_font("Arial", "", 11)
+    pdf.multi_cell(0, 8, f"Query: {query}")
+    pdf.ln(5)
+
+    if parsed["type"] == "table":
+
+        cols = parsed["columns"]
+        data = parsed["data"]
+
+        width = 190 / len(cols)
+
+        pdf.set_font("Arial", "B", 10)
+
+        for c in cols:
+            pdf.cell(width, 8, str(c), border=1)
+
+        pdf.ln()
+
+        pdf.set_font("Arial", "", 9)
+
+        for row in data:
+            for item in row:
+                pdf.cell(width, 8, str(item)[:20], border=1)
+            pdf.ln()
+
+    else:
+        pdf.multi_cell(0, 8, parsed["content"])
+
+    file = "report.pdf"
+    pdf.output(file)
+    return file
+
+
+
+# ============================================================
+# FILE: agents/analyst_agent.py
+# ============================================================
+
+from typing import TypedDict, Annotated
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langchain_core.messages import AnyMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
+class AnalystState(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]
+
+def get_analyst_app():
+
+    llm = ChatOpenAI(model="gpt-4o-mini")
+
+    prompt = """
+You are business analyst.
+Rewrite user request into clean analytical request.
+Return only rewritten request.
+"""
+
+    sm = [SystemMessage(content=prompt)]
+
+    def analyst(state):
+        r = llm.invoke(sm + state["messages"])
+        return {"messages":[r]}
+
+    g = StateGraph(AnalystState)
+    g.add_node("analyst", analyst)
+    g.add_edge(START, "analyst")
+    g.add_edge("analyst", END)
+
+    return g.compile()
+
+
+
+# ============================================================
+# FILE: agents/followup_agent.py
+# ============================================================
+
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage
+
+llm = ChatOpenAI(model="gpt-4o-mini")
+
+def get_followup_questions(q):
+
+    msgs = [
+        SystemMessage(content="""
+Return 4 smart business follow-up questions.
+One per line.
+No numbering.
+"""),
+        HumanMessage(content=q)
+    ]
+
+    r = llm.invoke(msgs).content
+
+    return [x.strip() for x in r.split("\n") if x.strip()][:4]
+
+
+
+# ============================================================
+# FILE: agents/reviewer_agent.py
+# ============================================================
+
+from typing import TypedDict, Annotated
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langchain_core.messages import AnyMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
+class ReviewerState(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]
+
+def get_reviewer_app():
+
+    llm = ChatOpenAI(model="gpt-4o-mini")
+
+    prompt = """
+Convert output into strict valid JSON.
+
+Table:
+{
+"type":"table",
+"columns":["A"],
+"data":[["x"]]
+}
+
+Text:
+{
+"type":"text",
+"content":"..."
+}
+"""
+
+    sm = [SystemMessage(content=prompt)]
+
+    def reviewer(state):
+        r = llm.invoke(sm + state["messages"])
+        return {"messages":[r]}
+
+    g = StateGraph(ReviewerState)
+    g.add_node("reviewer", reviewer)
+    g.add_edge(START, "reviewer")
+    g.add_edge("reviewer", END)
+
+    return g.compile()
+
+
+
+# ============================================================
+# FILE: agents/expert_agent.py
+# (keep your tools exactly same)
+# ============================================================
+
+# USE YOUR EXISTING FILE
+# only change model:
+
+# llm = ChatOpenAI(model="gpt-5-nano")
+
+
+
+# ============================================================
+# FILE: agents/supervisor_agent.py
+# ============================================================
+
+from typing import TypedDict, Annotated, Dict, Any
+from langgraph.graph import StateGraph, START
+from langgraph.graph.message import add_messages
+from langchain_core.messages import AnyMessage
+
+from agents.analyst_agent import get_analyst_app
+from agents.expert_agent import get_expert_app
+from agents.reviewer_agent import get_reviewer_app
+
+class SupervisorState(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]
+    step: int
+    next_node: str
+    db_config: Dict[str, Any]
+
+def supervisor(state):
+
+    s = state["step"]
+
+    nxt = {
+        0: "analyst",
+        1: "expert",
+        2: "reviewer"
+    }.get(s, "__end__")
+
+    return {
+        "messages": state["messages"],
+        "step": s + 1,
+        "next_node": nxt,
+        "db_config": state["db_config"]
+    }
+
+def route(state):
+    return state["next_node"]
+
+def call_analyst(state):
+    return get_analyst_app().invoke({"messages":state["messages"]})
+
+def call_expert(state):
+    return get_expert_app(state["db_config"]).invoke({"messages":state["messages"]})
+
+def call_reviewer(state):
+    return get_reviewer_app().invoke({"messages":state["messages"]})
+
+def get_supervisor_app(db_config):
+
+    g = StateGraph(SupervisorState)
+
+    g.add_node("supervisor", supervisor)
+    g.add_node("analyst", call_analyst)
+    g.add_node("expert", call_expert)
+    g.add_node("reviewer", call_reviewer)
+
+    g.add_edge(START, "supervisor")
+    g.add_conditional_edges("supervisor", route)
+
+    g.add_edge("analyst", "supervisor")
+    g.add_edge("expert", "supervisor")
+    g.add_edge("reviewer", "supervisor")
+
+    app = g.compile()
+
+    class Wrapped:
+        def invoke(self, payload):
+            payload["db_config"] = db_config
+            return app.invoke(payload)
+
+    return Wrapped()
+
+
+
+# ============================================================
+# FILE: streamlit_app.py
+# ============================================================
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from langchain_core.messages import AIMessage
+
+from agents.supervisor_agent import get_supervisor_app
+from agents.followup_agent import get_followup_questions
+from db.connection import get_db_connection_dynamic
+
+from utils.cache import load_bg
+from utils.parser import parse_response
+from utils.memory import get_chat_messages
+from utils.db_store import load_connections, save_connection
+from utils.pdf_export import create_pdf
+
+
+# -------------------------------------------------
+# PAGE
+# -------------------------------------------------
+st.set_page_config(page_title="Insight Grid AI", layout="wide")
+
+bg = load_bg("assets/backgroud6.jfif")
+
+st.markdown(f"""
+<style>
+.stApp {{
+background:
+linear-gradient(rgba(0,0,0,0.65),rgba(0,0,0,0.65)),
+url("data:image/png;base64,{bg}");
+background-size:cover;
+}}
+</style>
+""", unsafe_allow_html=True)
+
+
+# -------------------------------------------------
+# SESSION
+# -------------------------------------------------
+defaults = {
+    "db_connected": False,
+    "db_config": {},
+    "query": "",
+    "history": [],
+    "memory_on": True,
+    "last_response": "",
+    "last_df": None,
+    "followups": []
+}
+
+for k,v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k]=v
+
+
+# -------------------------------------------------
+# HEADER
+# -------------------------------------------------
+st.title("🤖 Insight Grid AI")
+st.caption("Where Data, Agents and Decisions Connect")
+
+
+# -------------------------------------------------
+# TOP BAR
+# -------------------------------------------------
+c1,c2,c3 = st.columns([3,2,2])
+
+with c1:
+    st.toggle("Memory Mode", key="memory_on")
+
+with c2:
+    if st.session_state.db_connected:
+        st.success("Connected ✅")
+    else:
+        st.warning("Not Connected")
+
+with c3:
+    if st.button("Connect Database"):
+        st.session_state.show_db = True
+
+
+# -------------------------------------------------
+# DB PANEL
+# -------------------------------------------------
+if st.session_state.get("show_db", False):
+
+    tab1,tab2 = st.tabs(["Connect Now","Saved"])
+
+    with tab1:
+
+        host = st.text_input("Host")
+        port = st.text_input("Port","5432")
+        db = st.text_input("Database")
+        user = st.text_input("User")
+        pwd = st.text_input("Password", type="password")
+        name = st.text_input("Save Name")
+
+        if st.button("Connect"):
+            cfg = {
+                "host":host,
+                "port":port,
+                "database":db,
+                "user":user,
+                "password":pwd
+            }
+
+            conn = get_db_connection_dynamic(cfg)
+            conn.close()
+
+            st.session_state.db_connected = True
+            st.session_state.db_config = cfg
+            st.success("Connected Successfully")
+
+        if st.button("Save Connection"):
+            save_connection({
+                "name":name,
+                "host":host,
+                "port":port,
+                "database":db,
+                "user":user,
+                "password":pwd
+            })
+
+    with tab2:
+
+        data = load_connections()
+
+        if data:
+            names = [x["name"] for x in data]
+            sel = st.selectbox("Saved Connections", names)
+
+            row = [x for x in data if x["name"] == sel][0]
+
+            if st.button("Use Saved"):
+                st.session_state.db_connected = True
+                st.session_state.db_config = row
+                st.success("Connected")
+
+
+# -------------------------------------------------
+# QUERY
+# -------------------------------------------------
+query = st.text_area(
+    "Ask your business question",
+    key="query",
+    height=130
+)
+
+run = st.button("🚀 Run Analysis")
+
+
+# -------------------------------------------------
+# RUN
+# -------------------------------------------------
+if run:
+
+    msgs = get_chat_messages(
+        query,
+        st.session_state.memory_on,
+        st.session_state.history
+    )
+
+    app = get_supervisor_app(
+        st.session_state.db_config
+    )
+
+    with st.spinner("Running AI Agents..."):
+
+        result = app.invoke({
+            "messages": msgs,
+            "step": 0
+        })
+
+    final = ""
+
+    for m in reversed(result["messages"]):
+        if getattr(m, "type", "") == "ai":
+            final = m.content
+            break
+
+    st.session_state.last_response = final
+
+    parsed = parse_response(final)
+
+    if parsed and parsed["type"] == "table":
+        st.session_state.last_df = pd.DataFrame(
+            parsed["data"],
+            columns=parsed["columns"]
+        )
+    else:
+        st.session_state.last_df = None
+
+    st.session_state.followups = get_followup_questions(query)
+
+    if st.session_state.memory_on:
+        st.session_state.history += msgs
+        st.session_state.history.append(
+            AIMessage(content=final)
+        )
+
+
+# -------------------------------------------------
+# TABLE
+# -------------------------------------------------
+if st.session_state.last_df is not None:
+
+    st.subheader("📊 Result")
+    st.dataframe(
+        st.session_state.last_df,
+        use_container_width=True
+    )
+
+    num = st.session_state.last_df.select_dtypes(include="number").columns
+
+    if len(num) > 0:
+
+        val = num[-1]
+        lab = [c for c in st.session_state.last_df.columns if c != val][0]
+
+        fig = px.bar(
+            st.session_state.last_df,
+            x=lab,
+            y=val
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+
+# -------------------------------------------------
+# FOLLOWUPS
+# -------------------------------------------------
+if st.session_state.followups:
+
+    st.subheader("💡 Follow-up Questions")
+
+    for i,q in enumerate(st.session_state.followups):
+        if st.button(q, key=f"f{i}"):
+            st.session_state.query = q
+            st.rerun()
+
+
+# -------------------------------------------------
+# PDF
+# -------------------------------------------------
+if st.session_state.last_response:
+
+    parsed = parse_response(
+        st.session_state.last_response
+    )
+
+    if parsed:
+
+        file = create_pdf(parsed, query)
+
+        with open(file, "rb") as f:
+            st.download_button(
+                "📄 Download Report",
+                f,
+                "Insight_Report.pdf"
+            )
