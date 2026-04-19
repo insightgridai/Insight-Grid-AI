@@ -1,41 +1,69 @@
-from typing import Annotated, TypedDict
+from typing import TypedDict, Annotated
 
 from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import AnyMessage, add_messages
-from langchain_core.messages import SystemMessage
+from langgraph.graph.message import add_messages
+from langchain_core.messages import AnyMessage, SystemMessage
+
 from langchain_openai import ChatOpenAI
 
 
+# ---------------------------------------------------
+# STATE
+# ---------------------------------------------------
 class AnalystState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
 
+# ---------------------------------------------------
+# APP
+# ---------------------------------------------------
 def get_analyst_app():
 
     llm = ChatOpenAI(model="gpt-5-nano")
 
-    analyst_system_message = [
-        SystemMessage(
-            content=(
-                "You are a data analyst. Your task is to understand the user's "
-                "question and determine what data is required from the database "
-                "to answer it. Provide a clear analysis request that the expert "
-                "agent can execute using SQL."
-            )
-        )
+    system_prompt = """
+You are a senior business data analyst.
+
+Your task:
+1. Understand the user's question.
+2. Rewrite it into a clean analytical request.
+3. Make it easier for SQL generation.
+
+Examples:
+
+User:
+Show top 10 customers latest year
+
+Output:
+Find latest year in sales data and return top 10 customers by revenue.
+
+User:
+Monthly sales trend
+
+Output:
+Show monthly total revenue ordered by month.
+
+IMPORTANT:
+- Return only rewritten request.
+- No explanations.
+- No bullets.
+"""
+
+    system_message = [
+        SystemMessage(content=system_prompt)
     ]
 
-    # ---------------- Analyst Node ----------------
 
     def analyst(state: AnalystState):
 
         response = llm.invoke(
-            analyst_system_message + state["messages"]
+            system_message + state["messages"]
         )
 
-        return {"messages": [response]}
+        return {
+            "messages": [response]
+        }
 
-    # ---------------- Graph ----------------
 
     graph = StateGraph(AnalystState)
 
