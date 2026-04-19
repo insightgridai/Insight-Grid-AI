@@ -104,14 +104,20 @@ def parse_response(response):
 
 # -------------------------------------------------
 # DB POPUP
+# ONLY CHANGED THIS SECTION
 # -------------------------------------------------
-@st.dialog("Connect to PostgreSQL Database")
+@st.dialog("Connect to Database")
 def db_popup():
 
-    host = st.text_input("Host")
-    port = st.text_input("Port", value="5432")
-    db = st.text_input("Database")
-    user = st.text_input("Username")
+    host_options = ["localhost", "127.0.0.1", "192.168.1.10"]
+    port_options = ["5432", "3306", "1433", "1521"]
+    db_options = ["sales_db", "finance_db", "hr_db"]
+    user_options = ["postgres", "admin", "user"]
+
+    host = st.selectbox("Host", host_options)
+    port = st.selectbox("Port", port_options)
+    db = st.selectbox("Database", db_options)
+    user = st.selectbox("Username", user_options)
     pwd = st.text_input("Password", type="password")
 
     if st.button("Connect Now"):
