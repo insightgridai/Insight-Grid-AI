@@ -1,4 +1,4 @@
-from typing import TypedDict, Annotated
+from typing import TypedDict, Annotated, Dict, Any
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph import StateGraph, START
@@ -16,10 +16,11 @@ class SupervisorState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     step: int
     next_node: str
+    db_config: Dict[str, Any]
 
 
 # ---------------------------------------------------
-# SUPERVISOR ROUTER
+# ROUTER
 # ---------------------------------------------------
 def supervisor(state: SupervisorState):
 
@@ -27,28 +28,27 @@ def supervisor(state: SupervisorState):
 
     if step == 0:
         nxt = "analyst"
-
     elif step == 1:
         nxt = "expert"
-
     elif step == 2:
         nxt = "reviewer"
-
     else:
         nxt = "__end__"
 
     return {
         "messages": state["messages"],
         "step": step + 1,
-        "next_node": nxt
+        "next_node": nxt,
+        "db_config": state["db_config"]
     }
 
 
 # ---------------------------------------------------
-# WRAPPERS
+# CHILD CALLS
 # ---------------------------------------------------
 def call_analyst(state: SupervisorState):
     app = get_analyst_app()
+
     return app.invoke({
         "messages": state["messages"]
     })
@@ -56,6 +56,7 @@ def call_analyst(state: SupervisorState):
 
 def call_expert(state: SupervisorState):
     app = get_expert_app(state["db_config"])
+
     return app.invoke({
         "messages": state["messages"]
     })
@@ -63,13 +64,14 @@ def call_expert(state: SupervisorState):
 
 def call_reviewer(state: SupervisorState):
     app = get_reviewer_app()
+
     return app.invoke({
         "messages": state["messages"]
     })
 
 
 # ---------------------------------------------------
-# ROUTER
+# CONDITIONAL
 # ---------------------------------------------------
 def route_next(state: SupervisorState):
     return state["next_node"]
@@ -100,13 +102,9 @@ def get_supervisor_app(db_config):
 
     app = graph.compile()
 
-    # inject db config
-    def wrapped_invoke(payload):
-        payload["db_config"] = db_config
-        return app.invoke(payload)
-
     class Wrapped:
         def invoke(self, payload):
-            return wrapped_invoke(payload)
+            payload["db_config"] = db_config
+            return app.invoke(payload)
 
     return Wrapped()
