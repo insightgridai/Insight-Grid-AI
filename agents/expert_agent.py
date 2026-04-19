@@ -7,7 +7,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_core.messages import AnyMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from tools.get_schema import get_schema
+from tools.get_schema import get_schema_tool
 from tools.execute_sql import get_execute_sql_tool
 
 
@@ -25,6 +25,7 @@ def get_expert_app(db_config):
 
     llm = ChatOpenAI(model="gpt-5-nano")
 
+    get_schema = get_schema_tool(db_config)
     execute_sql = get_execute_sql_tool(db_config)
 
     tools = [
@@ -35,25 +36,18 @@ def get_expert_app(db_config):
     tool_llm = llm.bind_tools(tools)
 
     system_prompt = """
-You are a senior SQL expert for PostgreSQL.
+You are a PostgreSQL senior SQL expert.
 
 RULES:
-1. ALWAYS inspect schema first using get_schema.
-2. Then generate SQL.
-3. Then execute SQL using execute_sql tool.
-4. Return ONLY tool result.
+1. Always inspect schema first.
+2. Then generate correct SQL.
+3. Then execute SQL.
+4. Return tool result only.
 5. No explanations.
 
-OUTPUT FORMAT:
-
-{
-  "columns": [],
-  "data": []
-}
-
 Use PostgreSQL syntax.
-Use LIMIT when top requested.
-Use current/latest year dynamically if asked.
+Use LIMIT when needed.
+Use latest year dynamically if requested.
 """
 
     system_message = [
