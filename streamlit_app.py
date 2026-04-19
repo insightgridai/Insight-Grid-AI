@@ -21,6 +21,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# -------------------------------------------------
+# MEMORY LIMITS  ← tune these if needed
+# -------------------------------------------------
+MAX_MEMORY_TURNS    = 6     # keep last N human+AI turn pairs (6 = 3 pairs)
+MAX_MEMORY_CHARS    = 8000  # hard cap on total chars sent in history
+
 
 # -------------------------------------------------
 # BACKGROUND IMAGE
@@ -53,7 +59,6 @@ st.markdown(
 
     .block-container {{ padding-top: 1.5rem; padding-bottom: 2rem; }}
 
-    /* ── Welcome ── */
     @keyframes fadeInUp {{
         from {{ opacity: 0; transform: translateY(28px); }}
         to   {{ opacity: 1; transform: translateY(0); }}
@@ -90,7 +95,6 @@ st.markdown(
         animation: fadeInUp 0.8s ease 0.1s both;
     }}
 
-    /* ── Main header ── */
     .main-title {{ font-size: 1.5rem; font-weight: 700; color: #f0d9a8; }}
     .main-caption {{
         font-size: 11px;
@@ -99,13 +103,13 @@ st.markdown(
         letter-spacing: 1px;
     }}
 
-    /* ── Memory badge ── */
     .memory-badge {{
         font-size: 11px; padding: 3px 10px;
         border-radius: 20px; font-weight: 600;
     }}
     .memory-on  {{ background: #1db954; color: white; }}
     .memory-off {{ background: #666;    color: white; }}
+
     .memory-toggle-container {{
         display: flex; align-items: center; gap: 8px;
         padding: 6px 14px;
@@ -116,7 +120,6 @@ st.markdown(
         font-size: 13px; color: rgba(255,255,255,0.6);
     }}
 
-    /* ── Chat bubbles ── */
     .chat-bubble-user {{
         background: rgba(100,149,237,0.18);
         border-left: 3px solid #6495ED;
@@ -130,7 +133,17 @@ st.markdown(
         margin: 6px 0; font-size: 14px; color: #eee;
     }}
 
-    /* ── Streamlit overrides ── */
+    /* context overflow warning banner */
+    .ctx-warning {{
+        background: rgba(255,160,50,0.18);
+        border: 1px solid rgba(255,160,50,0.5);
+        border-radius: 8px;
+        padding: 8px 14px;
+        font-size: 13px;
+        color: #ffd080;
+        margin-bottom: 10px;
+    }}
+
     div[data-testid="stButton"] button {{
         border-radius: 10px;
         font-family: 'Sora', sans-serif;
@@ -166,10 +179,11 @@ defaults = {
     "pending_query": "",
     "auto_run": False,
     "memory_enabled": True,
-    "conversation_history": [],
-    "memory_messages": [],
+    "conversation_history": [],   # display only (dicts)
+    "memory_messages": [],        # LangChain message objects
     "screen": "welcome",
     "active_category": "All",
+    "ctx_trimmed": False,         # flag to show trim warning
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -231,15 +245,66 @@ def parse_response(response):
         return None
 
 
+def trim_memory_messages(messages):
+    """
+    Prevent OpenAIContextOverflowError by:
+    1. Keeping only the last MAX_MEMORY_TURNS messages.
+    2. Truncating individual AI messages that are too long (big JSON tables).
+    3. Hard-capping total character count to MAX_MEMORY_CHARS.
+    Returns (trimmed_list, was_trimmed_bool).
+    """
+    if not messages:
+        return messages, False
+
+    trimmed = False
+
+    # Step 1 – keep only last N turns
+    if len(messages) > MAX_MEMORY_TURNS:
+        messages = messages[-MAX_MEMORY_TURNS:]
+        trimmed  = True
+
+    # Step 2 – truncate huge AI messages (e.g. large JSON table responses)
+    MAX_MSG_CHARS = 1500
+    cleaned = []
+    for m in messages:
+        if isinstance(m, AIMessage) and len(m.content) > MAX_MSG_CHARS:
+            # Keep a short summary hint instead of the full JSON blob
+            short = m.content[:MAX_MSG_CHARS] + "… [truncated for context]"
+            cleaned.append(AIMessage(content=short))
+            trimmed = True
+        else:
+            cleaned.append(m)
+
+    # Step 3 – hard total char cap (drop oldest pairs until under limit)
+    while True:
+        total = sum(len(m.content) for m in cleaned)
+        if total <= MAX_MEMORY_CHARS or len(cleaned) <= 2:
+            break
+        cleaned = cleaned[2:]   # drop oldest human+AI pair
+        trimmed  = True
+
+    return cleaned, trimmed
+
+
 def build_agent_messages(current_query: str):
+    """Build message list for the agent, with safe memory trimming."""
+    st.session_state.ctx_trimmed = False
+
     if st.session_state.memory_enabled and st.session_state.memory_messages:
-        msgs = list(st.session_state.memory_messages)
-        msgs.append(HumanMessage(content=current_query))
-        return msgs
-    return [HumanMessage(content=current_query)]
+        trimmed_msgs, was_trimmed = trim_memory_messages(
+            list(st.session_state.memory_messages)
+        )
+        if was_trimmed:
+            st.session_state.ctx_trimmed = True
+        msgs = trimmed_msgs + [HumanMessage(content=current_query)]
+    else:
+        msgs = [HumanMessage(content=current_query)]
+
+    return msgs
 
 
 def run_query(query_str: str):
+    """Execute the AI agent pipeline."""
     if not st.session_state.db_connected:
         st.error("Please connect to a database first.")
         return
@@ -248,53 +313,73 @@ def run_query(query_str: str):
     st.session_state.query_text = query_str
 
     with st.spinner("Running AI Agents…"):
-        app    = get_supervisor_app(st.session_state.db_config)
-        result = app.invoke({
-            "messages": build_agent_messages(query_str),
-            "step": 0
-        })
+        try:
+            app    = get_supervisor_app(st.session_state.db_config)
+            result = app.invoke({
+                "messages": build_agent_messages(query_str),
+                "step": 0
+            })
 
-        final_text = ""
-        for msg in reversed(result["messages"]):
-            if getattr(msg, "type", "") == "ai":
-                final_text = msg.content
-                break
+            final_text = ""
+            for msg in reversed(result["messages"]):
+                if getattr(msg, "type", "") == "ai":
+                    final_text = msg.content
+                    break
 
-        st.session_state.last_response = final_text
+            st.session_state.last_response = final_text
 
-        if st.session_state.memory_enabled:
-            st.session_state.conversation_history += [
-                {"role": "user", "content": query_str},
-                {"role": "ai",   "content": final_text},
-            ]
-            st.session_state.memory_messages += [
-                HumanMessage(content=query_str),
-                AIMessage(content=final_text),
-            ]
-        else:
-            st.session_state.conversation_history = []
-            st.session_state.memory_messages      = []
+            # Update memory store
+            if st.session_state.memory_enabled:
+                st.session_state.conversation_history += [
+                    {"role": "user", "content": query_str},
+                    {"role": "ai",   "content": final_text},
+                ]
+                st.session_state.memory_messages += [
+                    HumanMessage(content=query_str),
+                    AIMessage(content=final_text),
+                ]
+            else:
+                st.session_state.conversation_history = []
+                st.session_state.memory_messages      = []
 
-        parsed = parse_response(final_text)
-        if parsed:
-            if parsed["type"] == "table":
-                df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
-                st.session_state.last_df  = df
-                st.session_state.chart_df = df
-            elif parsed["type"] == "text":
-                st.session_state.last_df  = None
-                st.session_state.chart_df = None
+            # Parse result
+            parsed = parse_response(final_text)
+            if parsed:
+                if parsed["type"] == "table":
+                    df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
+                    st.session_state.last_df  = df
+                    st.session_state.chart_df = df
+                elif parsed["type"] == "text":
+                    st.session_state.last_df  = None
+                    st.session_state.chart_df = None
 
-        if st.session_state.memory_enabled and st.session_state.conversation_history:
-            ctx = " | ".join(
-                t["content"][:120]
-                for t in st.session_state.conversation_history[-4:]
-            )
-            followup_input = f"{ctx} | {query_str}"
-        else:
-            followup_input = query_str
+            # Follow-up questions
+            if st.session_state.memory_enabled and st.session_state.conversation_history:
+                ctx = " | ".join(
+                    t["content"][:80]
+                    for t in st.session_state.conversation_history[-4:]
+                )
+                followup_input = f"{ctx} | {query_str}"
+            else:
+                followup_input = query_str
 
-        st.session_state.followups = get_followup_questions(followup_input)
+            st.session_state.followups = get_followup_questions(followup_input)
+
+        except Exception as e:
+            err_str = str(e)
+
+            # ── Specific handler for context overflow ──
+            if "ContextOverflow" in err_str or "context_length_exceeded" in err_str \
+                    or "maximum context" in err_str.lower():
+                st.error(
+                    "⚠️ **Context window full.** The conversation history was too long. "
+                    "Memory has been automatically cleared — please re-run your query."
+                )
+                # Auto-clear memory so next attempt works
+                st.session_state.memory_messages      = []
+                st.session_state.conversation_history = []
+            else:
+                st.error(f"Agent error: {err_str}")
 
 
 def show_visual(df):
@@ -393,7 +478,6 @@ def db_popup():
 # =================================================================
 if st.session_state.screen == "welcome":
 
-    # Top bar
     t1, t2 = st.columns([8, 2])
     with t2:
         if st.button("🔌 Connect DB"):
@@ -406,7 +490,6 @@ if st.session_state.screen == "welcome":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Hero text
     st.markdown(
         '<div class="welcome-eyebrow">INSIGHT GRID AI</div>'
         '<div class="welcome-title">Welcome, how can I help?</div>'
@@ -414,11 +497,9 @@ if st.session_state.screen == "welcome":
         unsafe_allow_html=True
     )
 
-    # Centered content column
     _, mid, _ = st.columns([1, 4, 1])
     with mid:
 
-        # ── Category chips ──
         active_cat = st.radio(
             "",
             CATEGORIES,
@@ -431,7 +512,6 @@ if st.session_state.screen == "welcome":
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── Text input box ──
         welcome_query = st.text_area(
             "question",
             height=85,
@@ -456,15 +536,14 @@ if st.session_state.screen == "welcome":
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── Suggestion chips (2 per row) ──
         chips = SUGGESTIONS.get(active_cat, SUGGESTIONS["All"])
         pairs = [chips[i:i+2] for i in range(0, len(chips), 2)]
         for pair in pairs:
             cols = st.columns(len(pair))
             for idx, (icon, label) in enumerate(pair):
                 with cols[idx]:
-                    btn_label = f"{icon}  {label}"
-                    if st.button(btn_label, key=f"chip_{label[:30]}", use_container_width=True):
+                    if st.button(f"{icon}  {label}", key=f"chip_{label[:30]}",
+                                 use_container_width=True):
                         run_query(label)
                         st.rerun()
 
@@ -475,7 +554,6 @@ if st.session_state.screen == "welcome":
 #  SCREEN: MAIN
 # =================================================================
 
-# Handle pending follow-up
 if st.session_state.pending_query:
     st.session_state.query_text    = st.session_state.pending_query
     st.session_state.pending_query = ""
@@ -501,7 +579,11 @@ with col_mem:
         ["🧠 With Memory", "🔄 Without Memory"],
         index=0 if st.session_state.memory_enabled else 1,
         horizontal=True,
-        help="With Memory: follow-ups build on prior answers.\nWithout Memory: each query is independent."
+        help=(
+            "With Memory: follow-ups build on prior answers "
+            f"(last {MAX_MEMORY_TURNS // 2} exchanges kept).\n"
+            "Without Memory: each query is independent."
+        )
     )
     st.session_state.memory_enabled = (mem_choice == "🧠 With Memory")
 
@@ -513,25 +595,38 @@ with col_db:
     else:
         st.warning("Not Connected")
 
-# Back to home
 if st.button("⬅️ Back to Home"):
     st.session_state.screen = "welcome"
     st.rerun()
 
 st.divider()
 
-# ── Memory status ──
-if st.session_state.memory_enabled:
+# ── Context trim warning ──
+if st.session_state.ctx_trimmed:
     st.markdown(
-        '<div class="memory-toggle-container"><span>Mode:</span>'
-        '<span class="memory-badge memory-on">🧠 Memory ON</span></div>',
+        '<div class="ctx-warning">'
+        "⚡ <b>Memory auto-trimmed</b> — older exchanges were shortened to stay within "
+        "the AI model's context limit. Recent context is preserved."
+        "</div>",
         unsafe_allow_html=True
     )
-    if st.session_state.conversation_history:
-        if st.button("🗑️ Clear Conversation Memory"):
-            st.session_state.conversation_history = []
-            st.session_state.memory_messages      = []
-            st.rerun()
+
+# ── Memory status ──
+if st.session_state.memory_enabled:
+    turn_count = len(st.session_state.conversation_history) // 2
+    st.markdown(
+        f'<div class="memory-toggle-container"><span>Mode:</span>'
+        f'<span class="memory-badge memory-on">🧠 Memory ON — {turn_count} turn(s) stored</span></div>',
+        unsafe_allow_html=True
+    )
+    col_clr1, col_clr2 = st.columns([2, 6])
+    with col_clr1:
+        if st.session_state.conversation_history:
+            if st.button("🗑️ Clear Memory"):
+                st.session_state.conversation_history = []
+                st.session_state.memory_messages      = []
+                st.session_state.ctx_trimmed           = False
+                st.rerun()
 else:
     st.markdown(
         '<div class="memory-toggle-container"><span>Mode:</span>'
@@ -539,7 +634,7 @@ else:
         unsafe_allow_html=True
     )
 
-# ── Conversation history expander ──
+# ── Conversation history ──
 if st.session_state.memory_enabled and st.session_state.conversation_history:
     with st.expander("📜 Conversation History", expanded=False):
         for turn in st.session_state.conversation_history:
