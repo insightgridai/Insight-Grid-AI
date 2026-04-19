@@ -42,11 +42,12 @@ bg_img = get_base64_image("assets/backgroud6.jfif")
 st.markdown(
     f"""
     <style>
-    /* ---- Background ---- */
+
+    /* ---------- Background ---------- */
     .stApp {{
         background:
-            linear-gradient(rgba(0,0,0,0.65), rgba(0,0,0,0.65)),
-            url("data:image/png;base64,{bg_img}");
+        linear-gradient(rgba(0,0,0,0.65), rgba(0,0,0,0.65)),
+        url("data:image/png;base64,{bg_img}");
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
@@ -56,7 +57,7 @@ st.markdown(
         padding-top: 2rem;
     }}
 
-    /* ---- Textarea ---- */
+    /* ---------- Text Area ---------- */
     textarea {{
         background-color: rgba(255,255,255,0.06) !important;
         color: white !important;
@@ -64,13 +65,56 @@ st.markdown(
         border-radius: 8px !important;
     }}
 
-    /* =====================================================
-       ALL NORMAL BUTTONS = ROBOT IMAGE BLUE COLOR
-       ===================================================== */
+    /* ==================================================
+       NORMAL BUTTONS = ROBOT BLUE GLOW
+       ================================================== */
     div[data-testid="stButton"] button,
     div[data-testid="stDownloadButton"] button {{
-        background
+        background: rgba(0,200,255,0.10) !important;
+        color: #00C8FF !important;
+        font-weight: 600 !important;
+        border: 1px solid rgba(0,200,255,0.45) !important;
+        border-radius: 8px !important;
+        box-shadow: 0 0 12px rgba(0,200,255,0.18) !important;
+        transition: all 0.2s ease !important;
+    }}
 
+    div[data-testid="stButton"] button:hover,
+    div[data-testid="stDownloadButton"] button:hover {{
+        background: rgba(0,200,255,0.20) !important;
+        color: white !important;
+        border-color: #00C8FF !important;
+        box-shadow: 0 0 16px rgba(0,200,255,0.45) !important;
+        transform: translateY(-1px);
+    }}
+
+    /* ==================================================
+       FOLLOWUP BUTTONS = WHITE TRANSPARENT
+       ================================================== */
+    .followup-btn div[data-testid="stButton"] button {{
+        background: transparent !important;
+        color: rgba(255,255,255,0.78) !important;
+        border: 1px solid rgba(255,255,255,0.15) !important;
+        border-radius: 20px !important;
+        font-weight: 400 !important;
+        box-shadow: none !important;
+    }}
+
+    .followup-btn div[data-testid="stButton"] button:hover {{
+        background: rgba(255,255,255,0.04) !important;
+        color: white !important;
+        border-color: rgba(255,255,255,0.35) !important;
+    }}
+
+    /* ---------- Radio ---------- */
+    div[data-testid="stRadio"] label {{
+        color: rgba(255,255,255,0.75) !important;
+    }}
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
