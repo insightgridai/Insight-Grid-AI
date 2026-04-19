@@ -1,111 +1,93 @@
 from typing import TypedDict, Annotated
 
-from langchain_core.messages import AnyMessage, SystemMessage
 from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
+from langchain_core.messages import AnyMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-# SQL tools
 from tools.get_schema import get_schema
-from tools.execute_sql import execute_sql
+from tools.execute_sql import get_execute_sql_tool
 
 
-# ---------------- LLM ----------------
-
-llm = ChatOpenAI(model="gpt-5-nano")
-
-
-# ---------------- LLM WITH TOOLS ----------------
-
-expert_llm = llm.bind_tools([
-    get_schema,
-    execute_sql
-])
-
-
-# ---------------- SYSTEM MESSAGE ----------------
-
-expert_system_message = [
-    SystemMessage(
-        content="""
-You are a senior data expert.
-
-Your job is to answer analytical questions using SQL tools.
-
-STRICT RULES (VERY IMPORTANT):
-
-1. Always use tools (get_schema, execute_sql).
-2. ALWAYS return output ONLY in JSON format.
-3. DO NOT add explanations, summaries, or text.
-4. DO NOT modify the tool output.
-5. DO NOT wrap JSON inside text.
-6. RETURN ONLY the JSON response from execute_sql.
-
-Expected format:
-
-{
-  "columns": ["col1", "col2"],
-  "data": [
-    [value1, value2],
-    [value1, value2]
-  ]
-}
-
-If query is not SELECT:
-Return JSON with status.
-
-DO NOT say anything else.
-"""
-    )
-]
-
-
-# ---------------- STATE ----------------
-
+# ---------------------------------------------------
+# STATE
+# ---------------------------------------------------
 class ExpertState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
 
-# ---------------- EXPERT NODE ----------------
+# ---------------------------------------------------
+# MAIN APP
+# ---------------------------------------------------
+def get_expert_app(db_config):
 
-def expert(state: ExpertState):
+    llm = ChatOpenAI(model="gpt-5-nano")
 
-    response = expert_llm.invoke(
-        expert_system_message + state["messages"]
-    )
+    execute_sql = get_execute_sql_tool(db_config)
 
-    return {"messages": [response]}
-
-
-# ---------------- GRAPH ----------------
-
-expert_graph = StateGraph(ExpertState)
-
-expert_graph.add_node("expert", expert)
-
-expert_graph.add_node(
-    "tools",
-    ToolNode([
+    tools = [
         get_schema,
         execute_sql
-    ])
-)
+    ]
 
-expert_graph.add_edge(START, "expert")
+    tool_llm = llm.bind_tools(tools)
 
-expert_graph.add_conditional_edges(
-    "expert",
-    tools_condition
-)
+    system_prompt = """
+You are a senior SQL expert for PostgreSQL.
 
-expert_graph.add_edge("tools", "expert")
+RULES:
+1. ALWAYS inspect schema first using get_schema.
+2. Then generate SQL.
+3. Then execute SQL using execute_sql tool.
+4. Return ONLY tool result.
+5. No explanations.
 
-expert_app = expert_graph.compile()
+OUTPUT FORMAT:
+
+{
+  "columns": [],
+  "data": []
+}
+
+Use PostgreSQL syntax.
+Use LIMIT when top requested.
+Use current/latest year dynamically if asked.
+"""
+
+    system_message = [
+        SystemMessage(content=system_prompt)
+    ]
 
 
-# ---------------- EXPORT ----------------
+    def expert(state: ExpertState):
 
-def get_expert_app():
-    return expert_app
+        response = tool_llm.invoke(
+            system_message + state["messages"]
+        )
+
+        return {
+            "messages": [response]
+        }
+
+
+    graph = StateGraph(ExpertState)
+
+    graph.add_node("expert", expert)
+
+    graph.add_node(
+        "tools",
+        ToolNode(tools)
+    )
+
+    graph.add_edge(START, "expert")
+
+    graph.add_conditional_edges(
+        "expert",
+        tools_condition
+    )
+
+    graph.add_edge("tools", "expert")
+
+    return graph.compile()
