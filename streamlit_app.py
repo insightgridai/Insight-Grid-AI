@@ -294,7 +294,7 @@ def db_popup():
 c1, c2 = st.columns([8, 2])
 
 with c2:
-    if st.button("🔌 Connect Database"):
+    if st.button("🔌 Connect to Database"):
         db_popup()
 
 if st.session_state.db_connected:
