@@ -43,7 +43,7 @@ if "followups" not in st.session_state:
 
 
 # -------------------------------------------------
-# DB CONNECTION POPUP
+# DB POPUP (FIXED)
 # -------------------------------------------------
 @st.dialog("Connect to PostgreSQL Database")
 def db_popup():
@@ -69,10 +69,16 @@ def db_popup():
             cur = conn.cursor()
             cur.execute("SELECT 1")
 
+            cur.close()
+            conn.close()
+
             st.session_state.db_connected = True
             st.session_state.db_config = config
 
             st.success("Database Connected Successfully ✅")
+
+            # Refresh UI + close dialog
+            st.rerun()
 
         except Exception as e:
             st.error(f"Connection Failed ❌ {str(e)}")
@@ -88,7 +94,7 @@ with col2:
         db_popup()
 
 if st.session_state.db_connected:
-    st.success("Connected")
+    st.success("Connected ✅")
 else:
     st.warning("Not Connected")
 
@@ -113,9 +119,7 @@ def parse_response(response):
     try:
         start = response.find("{")
         end = response.rfind("}") + 1
-
-        obj = json.loads(response[start:end])
-        return obj
+        return json.loads(response[start:end])
 
     except:
         return None
@@ -210,12 +214,12 @@ if run:
         else:
             st.code(final_text)
 
-        # FOLLOWUPS
+        # Follow-up questions
         st.session_state.followups = get_followup_questions(query)
 
 
 # -------------------------------------------------
-# KEEP TABLE
+# KEEP LAST RESULT
 # -------------------------------------------------
 if st.session_state.last_df is not None and not run:
 
@@ -227,16 +231,14 @@ if st.session_state.last_df is not None and not run:
 
 
 # -------------------------------------------------
-# FOLLOW UP QUESTIONS
+# FOLLOW-UP QUESTIONS
 # -------------------------------------------------
 if st.session_state.followups:
 
     st.subheader("💡 Follow-up Questions")
 
     for q in st.session_state.followups:
-
-        if st.button(q):
-            st.session_state["temp_q"] = q
+        st.button(q)
 
 
 # -------------------------------------------------
