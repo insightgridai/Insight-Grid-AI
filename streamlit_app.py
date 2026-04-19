@@ -34,9 +34,11 @@ def get_base64_image(image_path):
 bg_img = get_base64_image("assets/backgroud6.jfif")
 
 
-# -------------------------------------------------
-# GLOBAL STYLES
-# -------------------------------------------------
+# =====================================================
+# ONLY REPLACE YOUR GLOBAL STYLES BLOCK WITH THIS
+# KEEP FULL REMAINING CODE SAME
+# =====================================================
+
 st.markdown(
     f"""
     <style>
@@ -62,103 +64,12 @@ st.markdown(
         border-radius: 8px !important;
     }}
 
-    /* ---- ALL buttons: transparent + very light neon-blue outline ---- */
+    /* =====================================================
+       ALL NORMAL BUTTONS = ROBOT IMAGE BLUE COLOR
+       ===================================================== */
     div[data-testid="stButton"] button,
     div[data-testid="stDownloadButton"] button {{
-        background: transparent !important;
-        color: rgba(0,200,255,0.85) !important;
-        font-weight: 600 !important;
-        border: 1px solid rgba(0,200,255,0.38) !important;
-        border-radius: 8px !important;
-        box-shadow: none !important;
-        transition: all 0.18s ease !important;
-    }}
-
-    div[data-testid="stButton"] button:hover,
-    div[data-testid="stDownloadButton"] button:hover {{
-        background: rgba(0,200,255,0.08) !important;
-        border-color: rgba(0,200,255,0.65) !important;
-        color: #00C8FF !important;
-        box-shadow: 0 0 10px rgba(0,200,255,0.2) !important;
-    }}
-
-    div[data-testid="stButton"] button:active,
-    div[data-testid="stDownloadButton"] button:active {{
-        background: rgba(0,200,255,0.14) !important;
-    }}
-
-    /* ---- Follow-up buttons: fully transparent, plain subtle white ---- */
-    .followup-btn div[data-testid="stButton"] button {{
-        background: transparent !important;
-        border: 1px solid rgba(255,255,255,0.12) !important;
-        color: rgba(255,255,255,0.6) !important;
-        font-size: 0.80rem !important;
-        font-weight: 400 !important;
-        box-shadow: none !important;
-        border-radius: 20px !important;
-    }}
-
-    .followup-btn div[data-testid="stButton"] button:hover {{
-        border-color: rgba(255,255,255,0.35) !important;
-        color: rgba(255,255,255,0.9) !important;
-        background: rgba(255,255,255,0.04) !important;
-        box-shadow: none !important;
-    }}
-
-    /* ---- Quick suggestion chips: very faint neon blue ---- */
-    .quickchip div[data-testid="stButton"] button {{
-        background: rgba(0,200,255,0.05) !important;
-        border: 1px solid rgba(0,200,255,0.22) !important;
-        color: rgba(0,200,255,0.7) !important;
-        font-size: 0.78rem !important;
-        font-weight: 400 !important;
-        border-radius: 20px !important;
-        box-shadow: none !important;
-    }}
-
-    .quickchip div[data-testid="stButton"] button:hover {{
-        background: rgba(0,200,255,0.12) !important;
-        border-color: rgba(0,200,255,0.45) !important;
-        color: #00C8FF !important;
-    }}
-
-    /* ---- Memory radio ---- */
-    div[data-testid="stRadio"] label {{
-        color: rgba(255,255,255,0.75) !important;
-        font-size: 0.85rem !important;
-    }}
-
-    /* ---- Chat history ---- */
-    .chat-user {{
-        background: rgba(0,200,255,0.07);
-        border-left: 3px solid rgba(0,200,255,0.45);
-        border-radius: 6px;
-        padding: 7px 12px;
-        margin: 5px 0;
-        color: #d8f5ff;
-        font-size: 0.88rem;
-    }}
-    .chat-ai {{
-        background: rgba(255,255,255,0.03);
-        border-left: 3px solid rgba(255,255,255,0.18);
-        border-radius: 6px;
-        padding: 7px 12px;
-        margin: 5px 0;
-        color: rgba(255,255,255,0.65);
-        font-size: 0.88rem;
-    }}
-    .chat-label {{
-        font-size: 0.70rem;
-        opacity: 0.5;
-        margin-bottom: 2px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
+        background
 
 # -------------------------------------------------
 # HEADER
