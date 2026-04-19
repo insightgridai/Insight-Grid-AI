@@ -5,5 +5,5 @@ langchain-openai
 langgraph
 fpdf
 matplotlib
-plotly.express
-Kaleido
+plotly==5.24.1
+kaleido==0.2.1
