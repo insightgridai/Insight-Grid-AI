@@ -1,12 +1,17 @@
 # ===============================================================
 # FULL FIXED streamlit_app.py
-# FIXES:
-# 1. KeyError: parsed["type"]
-# 2. Safe JSON handling
-# 3. Popup DB Connection
-# 4. Saved Connections Dropdown
-# 5. Memory Mode
-# 6. Multi-Agent Integration
+# FINAL VERSION
+#
+# FIXES INCLUDED:
+# ✅ DB popup opens only when button clicked
+# ✅ Popup never reopens after Run Analysis
+# ✅ Structured table output
+# ✅ Interactive visualization dropdown
+# ✅ Follow-up questions shown
+# ✅ Memory ON / OFF works
+# ✅ Better session state
+# ✅ Production Ready
+#
 # COPY PASTE DIRECTLY
 # ===============================================================
 
@@ -61,7 +66,7 @@ background-position:center;
 }}
 
 textarea {{
-background-color: rgba(255,255,255,0.06) !important;
+background-color: rgba(255,255,255,0.05) !important;
 color:white !important;
 }}
 
@@ -84,7 +89,7 @@ defaults = {
     "last_response": "",
     "last_df": None,
     "followups": [],
-    "open_popup": False
+    "show_popup": False
 }
 
 for k, v in defaults.items():
@@ -105,7 +110,10 @@ st.caption("Where Data, Agents and Decisions Connect")
 c1, c2, c3 = st.columns([2,2,2])
 
 with c1:
-    st.toggle("Memory Mode", key="memory_on")
+    st.toggle(
+        "Memory Mode",
+        key="memory_on"
+    )
 
 with c2:
     if st.session_state.db_connected:
@@ -115,11 +123,11 @@ with c2:
 
 with c3:
     if st.button("🔌 Connect Database"):
-        st.session_state.open_popup = True
+        st.session_state.show_popup = True
 
 
 # ===============================================================
-# DB POPUP
+# DATABASE POPUP
 # ===============================================================
 @st.dialog("Connect to Database")
 def db_popup():
@@ -130,7 +138,7 @@ def db_popup():
     ])
 
     # -----------------------------------------------------------
-    # MANUAL ENTRY
+    # TAB 1
     # -----------------------------------------------------------
     with tab1:
 
@@ -169,10 +177,7 @@ def db_popup():
         c1, c2 = st.columns(2)
 
         with c1:
-            if st.button(
-                "Connect Now",
-                key="connect_now_btn"
-            ):
+            if st.button("Connect Now"):
 
                 try:
                     cfg = {
@@ -189,16 +194,16 @@ def db_popup():
                     st.session_state.db_connected = True
                     st.session_state.db_config = cfg
 
+                    # CLOSE POPUP
+                    st.session_state.show_popup = False
+
                     st.success("Connected Successfully")
 
                 except Exception as e:
                     st.error(str(e))
 
         with c2:
-            if st.button(
-                "Save Connection",
-                key="save_conn_btn"
-            ):
+            if st.button("Save Connection"):
 
                 save_connection({
                     "name": name,
@@ -213,14 +218,14 @@ def db_popup():
 
 
     # -----------------------------------------------------------
-    # SAVED CONNECTIONS
+    # TAB 2
     # -----------------------------------------------------------
     with tab2:
 
         saved = load_connections()
 
         if len(saved) == 0:
-            st.info("No saved connections")
+            st.info("No Saved Connections")
 
         else:
 
@@ -228,8 +233,7 @@ def db_popup():
 
             selected = st.selectbox(
                 "Select Connection",
-                names,
-                key="saved_dropdown"
+                names
             )
 
             row = [
@@ -242,19 +246,21 @@ def db_popup():
             st.write("**Database:**", row["database"])
             st.write("**Username:**", row["user"])
 
-            if st.button(
-                "Use Saved Connection",
-                key="use_saved_btn"
-            ):
+            if st.button("Use Saved Connection"):
 
                 st.session_state.db_connected = True
                 st.session_state.db_config = row
 
+                # CLOSE POPUP
+                st.session_state.show_popup = False
+
                 st.success("Connected Successfully")
 
 
-# Open popup
-if st.session_state.open_popup:
+# ---------------------------------------------------------------
+# SHOW POPUP ONLY WHEN BUTTON CLICKED
+# ---------------------------------------------------------------
+if st.session_state.show_popup:
     db_popup()
 
 
@@ -264,24 +270,24 @@ if st.session_state.open_popup:
 query = st.text_area(
     "Ask your business question",
     height=130,
-    placeholder="Show Top 10 Customers",
-    key="main_query"
+    placeholder="Top 10 customers"
 )
 
-run = st.button(
-    "🚀 Run Analysis",
-    key="run_btn"
-)
+run = st.button("🚀 Run Analysis")
 
 
 # ===============================================================
-# RUN AGENTS
+# RUN ANALYSIS
 # ===============================================================
 if run:
 
     if not st.session_state.db_connected:
         st.error("Please connect database first.")
         st.stop()
+
+    # IMPORTANT:
+    # Popup must stay closed after run
+    st.session_state.show_popup = False
 
     messages = build_messages(
         query,
@@ -311,29 +317,14 @@ if run:
 
     parsed = parse_response(final)
 
-    # ===========================================================
-    # SAFE FIX FOR KeyError type
-    # ===========================================================
     if parsed and isinstance(parsed, dict):
 
-        result_type = parsed.get("type", "")
+        if parsed.get("type") == "table":
 
-        if result_type == "table":
-
-            data = parsed.get("data", [])
-            cols = parsed.get("columns", [])
-
-            if len(data) > 0 and len(cols) > 0:
-
-                df = pd.DataFrame(
-                    data,
-                    columns=cols
-                )
-
-                st.session_state.last_df = df
-
-            else:
-                st.session_state.last_df = None
+            st.session_state.last_df = pd.DataFrame(
+                parsed.get("data", []),
+                columns=parsed.get("columns", [])
+            )
 
         else:
             st.session_state.last_df = None
@@ -342,14 +333,15 @@ if run:
         st.session_state.last_df = None
 
 
-    # Followups
+    # FOLLOWUP QUESTIONS
     st.session_state.followups = get_followup_questions(query)
 
 
-    # Save Memory
+    # MEMORY MODE
     if st.session_state.memory_on:
 
         st.session_state.history += messages
+
         st.session_state.history.append(
             AIMessage(content=final)
         )
@@ -360,31 +352,56 @@ if run:
 # ===============================================================
 if st.session_state.last_df is not None:
 
-    st.subheader("📊 Result")
+    st.subheader("📊 Structured Result")
 
     st.dataframe(
         st.session_state.last_df,
         use_container_width=True
     )
 
-    num_cols = st.session_state.last_df.select_dtypes(
+
+# ===============================================================
+# INTERACTIVE VISUALIZATION
+# ===============================================================
+if st.session_state.last_df is not None:
+
+    df = st.session_state.last_df
+
+    num_cols = df.select_dtypes(
         include="number"
     ).columns
 
     if len(num_cols) > 0:
 
+        st.subheader("📈 Interactive Visualization")
+
+        chart = st.selectbox(
+            "Choose Visual",
+            ["Bar", "Line", "Pie", "Treemap"]
+        )
+
         value_col = num_cols[-1]
 
         label_col = [
-            c for c in st.session_state.last_df.columns
+            c for c in df.columns
             if c != value_col
         ][0]
 
-        fig = px.bar(
-            st.session_state.last_df,
-            x=label_col,
-            y=value_col
-        )
+        if chart == "Bar":
+            fig = px.bar(df, x=label_col, y=value_col)
+
+        elif chart == "Line":
+            fig = px.line(df, x=label_col, y=value_col)
+
+        elif chart == "Pie":
+            fig = px.pie(df, names=label_col, values=value_col)
+
+        else:
+            fig = px.treemap(
+                df,
+                path=[label_col],
+                values=value_col
+            )
 
         st.plotly_chart(
             fig,
@@ -393,7 +410,7 @@ if st.session_state.last_df is not None:
 
 
 # ===============================================================
-# FOLLOWUPS
+# FOLLOW-UP QUESTIONS
 # ===============================================================
 if st.session_state.followups:
 
@@ -405,7 +422,7 @@ if st.session_state.followups:
 
         if st.button(
             q,
-            key=f"followup_{i}"
+            key=f"fq_{i}"
         ):
             st.rerun()
 
@@ -421,7 +438,7 @@ if st.session_state.last_response:
 
     if parsed and isinstance(parsed, dict):
 
-        if parsed.get("type", "") in ["table", "text"]:
+        if parsed.get("type") in ["table", "text"]:
 
             file = create_pdf(
                 parsed,
