@@ -1,60 +1,74 @@
+import json
+import psycopg2
+
 from langchain.tools import tool
-from db.connection import get_db_connection
 
 
-@tool
-def get_schema(table_name: str = None) -> str:
-    """
-    Get database schema information.
+# ---------------------------------------------------
+# FACTORY TOOL
+# ---------------------------------------------------
+def get_schema_tool(db_config):
 
-    - If no table_name is provided → returns all available tables
-    - If table_name is provided → returns column names and data types
-    """
+    @tool
+    def get_schema(_: str = "") -> str:
+        """
+        Return PostgreSQL tables and columns.
+        """
 
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
+        conn = None
+        cur = None
 
-        # ----------------------------------------------------
-        # CASE 1: Return list of tables
-        # ----------------------------------------------------
-        if not table_name:
+        try:
+            conn = psycopg2.connect(
+                host=db_config["host"],
+                port=db_config["port"],
+                database=db_config["database"],
+                user=db_config["user"],
+                password=db_config["password"],
+                sslmode="require"
+            )
+
+            cur = conn.cursor()
+
             cur.execute("""
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = 'public';
+                SELECT
+                    table_name,
+                    column_name,
+                    data_type
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                ORDER BY table_name, ordinal_position
             """)
 
-            tables = [row[0] for row in cur.fetchall()]
+            rows = cur.fetchall()
 
-            cur.close()
-            conn.close()
+            data = [
+                list(r)
+                for r in rows
+            ]
 
-            if not tables:
-                return "No tables found in database."
+            return json.dumps({
+                "columns": [
+                    "table_name",
+                    "column_name",
+                    "data_type"
+                ],
+                "data": data
+            })
 
-            return "Available tables: " + ", ".join(tables)
+        except Exception as e:
 
-        # ----------------------------------------------------
-        # CASE 2: Return schema of specific table
-        # ----------------------------------------------------
-        cur.execute(f"""
-            SELECT column_name, data_type
-            FROM information_schema.columns
-            WHERE table_name = '{table_name}';
-        """)
+            return json.dumps({
+                "columns": ["error"],
+                "data": [[str(e)]]
+            })
 
-        rows = cur.fetchall()
+        finally:
 
-        cur.close()
-        conn.close()
+            if cur:
+                cur.close()
 
-        if not rows:
-            return f"No schema found for table '{table_name}'."
+            if conn:
+                conn.close()
 
-        schema = [f"{col} ({dtype})" for col, dtype in rows]
-
-        return f"Schema for {table_name}: " + ", ".join(schema)
-
-    except Exception as e:
-        return f"Error fetching schema: {str(e)}"
+    return get_schema
