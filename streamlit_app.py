@@ -4,6 +4,7 @@ import json
 import plotly.express as px
 from fpdf import FPDF
 from langchain_core.messages import HumanMessage
+import base64
 
 from agents.supervisor_agent import get_supervisor_app
 from agents.followup_agent import get_followup_questions
@@ -18,6 +19,70 @@ st.set_page_config(
     layout="wide"
 )
 
+
+# -------------------------------------------------
+# BOTTOM IMAGE ONLY
+# Save image in assets/background.png
+# -------------------------------------------------
+def get_base64_image(image_path):
+    with open(image_path, "rb") as img:
+        return base64.b64encode(img.read()).decode()
+
+
+bg_img = get_base64_image("assets/image.avif")
+
+st.markdown(
+    f"""
+    <style>
+
+    .stApp {{
+        background: linear-gradient(
+            90deg,
+            #050814,
+            #081426,
+            #0b1020
+        );
+    }}
+
+    .bottom-banner {{
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 220px;
+        background-image: url("data:image/png;base64,{bg_img}");
+        background-size: cover;
+        background-position: center bottom;
+        background-repeat: no-repeat;
+        z-index: -1;
+        opacity: 0.95;
+    }}
+
+    .block-container {{
+        padding-top: 2rem;
+        padding-bottom: 240px;
+    }}
+
+    div[data-testid="stButton"] button {{
+        border-radius: 10px;
+    }}
+
+    textarea {{
+        background-color: rgba(255,255,255,0.06) !important;
+        color: white !important;
+    }}
+
+    </style>
+
+    <div class="bottom-banner"></div>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# -------------------------------------------------
+# HEADER
+# -------------------------------------------------
 st.title("🤖 Insight Grid AI")
 st.caption("Where Data, Agents and Decisions Connect")
 
@@ -108,7 +173,7 @@ else:
 
 
 # -------------------------------------------------
-# APPLY PENDING FOLLOWUP BEFORE WIDGET LOAD
+# APPLY PENDING FOLLOWUP
 # -------------------------------------------------
 if st.session_state.pending_query:
     st.session_state.query_text = st.session_state.pending_query
@@ -129,7 +194,7 @@ run = st.button("🚀 Run Analysis")
 
 
 # -------------------------------------------------
-# VISUALS
+# VISUAL FUNCTION
 # -------------------------------------------------
 def show_visual(df):
 
@@ -223,7 +288,7 @@ if should_run:
 
 
 # -------------------------------------------------
-# SHOW RESULT
+# RESULT
 # -------------------------------------------------
 if st.session_state.last_df is not None:
 
@@ -236,7 +301,7 @@ if st.session_state.last_df is not None:
 
 
 # -------------------------------------------------
-# SHOW VISUAL
+# VISUAL
 # -------------------------------------------------
 fig = None
 
@@ -339,7 +404,6 @@ if st.session_state.last_response:
         pdf.output("report.pdf")
 
         with open("report.pdf", "rb") as f:
-
             st.download_button(
                 "📄 Download Report",
                 data=f,
