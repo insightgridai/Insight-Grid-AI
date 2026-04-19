@@ -4,7 +4,7 @@ import json
 import plotly.express as px
 import plotly.graph_objects as go
 from fpdf import FPDF
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 import base64
 import os
 import re
@@ -33,9 +33,9 @@ def get_base64_image(image_path):
 
 bg_img = get_base64_image("assets/backgroud6.jfif")
 
+
 # -------------------------------------------------
-# NEON BLUE THEME + GLOBAL STYLES
-# Neon blue: #00C8FF  glow: rgba(0,200,255,0.55)
+# GLOBAL STYLES
 # -------------------------------------------------
 st.markdown(
     f"""
@@ -54,56 +54,105 @@ st.markdown(
         padding-top: 2rem;
     }}
 
-    /* ---- ALL Buttons → Neon Blue ---- */
-    div[data-testid="stButton"] button,
-    div[data-testid="stDownloadButton"] button {{
-        background: linear-gradient(135deg, #00C8FF 0%, #0080CC 100%) !important;
-        color: #000 !important;
-        font-weight: 700 !important;
-        border: none !important;
-        border-radius: 10px !important;
-        box-shadow: 0 0 10px #00C8FF, 0 0 22px rgba(0,200,255,0.5) !important;
-        transition: box-shadow 0.2s ease, transform 0.1s ease !important;
-    }}
-
-    div[data-testid="stButton"] button:hover,
-    div[data-testid="stDownloadButton"] button:hover {{
-        box-shadow: 0 0 18px #00C8FF, 0 0 40px rgba(0,200,255,0.8) !important;
-        transform: translateY(-1px) !important;
-    }}
-
-    div[data-testid="stButton"] button:active,
-    div[data-testid="stDownloadButton"] button:active {{
-        transform: translateY(0px) !important;
-    }}
-
     /* ---- Textarea ---- */
     textarea {{
         background-color: rgba(255,255,255,0.06) !important;
         color: white !important;
+        border: 1px solid rgba(0,200,255,0.25) !important;
+        border-radius: 8px !important;
     }}
 
-    /* ---- Suggestion chips (follow-up buttons) ---- */
-    .suggestion-chip button {{
-        background: rgba(0,200,255,0.12) !important;
-        border: 1px solid #00C8FF !important;
+    /* ---- ALL buttons: transparent + very light neon-blue outline ---- */
+    div[data-testid="stButton"] button,
+    div[data-testid="stDownloadButton"] button {{
+        background: transparent !important;
+        color: rgba(0,200,255,0.85) !important;
+        font-weight: 600 !important;
+        border: 1px solid rgba(0,200,255,0.38) !important;
+        border-radius: 8px !important;
+        box-shadow: none !important;
+        transition: all 0.18s ease !important;
+    }}
+
+    div[data-testid="stButton"] button:hover,
+    div[data-testid="stDownloadButton"] button:hover {{
+        background: rgba(0,200,255,0.08) !important;
+        border-color: rgba(0,200,255,0.65) !important;
         color: #00C8FF !important;
-        font-size: 0.82rem !important;
-        padding: 4px 12px !important;
-        box-shadow: 0 0 6px rgba(0,200,255,0.3) !important;
+        box-shadow: 0 0 10px rgba(0,200,255,0.2) !important;
     }}
 
-    .suggestion-chip button:hover {{
-        background: rgba(0,200,255,0.25) !important;
-        box-shadow: 0 0 14px rgba(0,200,255,0.6) !important;
+    div[data-testid="stButton"] button:active,
+    div[data-testid="stDownloadButton"] button:active {{
+        background: rgba(0,200,255,0.14) !important;
     }}
 
-    /* ---- Smart suggestion pill row ---- */
-    .smart-suggestions {{
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin: 6px 0 14px 0;
+    /* ---- Follow-up buttons: fully transparent, plain subtle white ---- */
+    .followup-btn div[data-testid="stButton"] button {{
+        background: transparent !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        color: rgba(255,255,255,0.6) !important;
+        font-size: 0.80rem !important;
+        font-weight: 400 !important;
+        box-shadow: none !important;
+        border-radius: 20px !important;
+    }}
+
+    .followup-btn div[data-testid="stButton"] button:hover {{
+        border-color: rgba(255,255,255,0.35) !important;
+        color: rgba(255,255,255,0.9) !important;
+        background: rgba(255,255,255,0.04) !important;
+        box-shadow: none !important;
+    }}
+
+    /* ---- Quick suggestion chips: very faint neon blue ---- */
+    .quickchip div[data-testid="stButton"] button {{
+        background: rgba(0,200,255,0.05) !important;
+        border: 1px solid rgba(0,200,255,0.22) !important;
+        color: rgba(0,200,255,0.7) !important;
+        font-size: 0.78rem !important;
+        font-weight: 400 !important;
+        border-radius: 20px !important;
+        box-shadow: none !important;
+    }}
+
+    .quickchip div[data-testid="stButton"] button:hover {{
+        background: rgba(0,200,255,0.12) !important;
+        border-color: rgba(0,200,255,0.45) !important;
+        color: #00C8FF !important;
+    }}
+
+    /* ---- Memory radio ---- */
+    div[data-testid="stRadio"] label {{
+        color: rgba(255,255,255,0.75) !important;
+        font-size: 0.85rem !important;
+    }}
+
+    /* ---- Chat history ---- */
+    .chat-user {{
+        background: rgba(0,200,255,0.07);
+        border-left: 3px solid rgba(0,200,255,0.45);
+        border-radius: 6px;
+        padding: 7px 12px;
+        margin: 5px 0;
+        color: #d8f5ff;
+        font-size: 0.88rem;
+    }}
+    .chat-ai {{
+        background: rgba(255,255,255,0.03);
+        border-left: 3px solid rgba(255,255,255,0.18);
+        border-radius: 6px;
+        padding: 7px 12px;
+        margin: 5px 0;
+        color: rgba(255,255,255,0.65);
+        font-size: 0.88rem;
+    }}
+    .chat-label {{
+        font-size: 0.70rem;
+        opacity: 0.5;
+        margin-bottom: 2px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
     }}
     </style>
     """,
@@ -131,8 +180,9 @@ defaults = {
     "query_text": "",
     "pending_query": "",
     "auto_run": False,
-    # cache the supervisor app so it isn't rebuilt every rerun
-    "_supervisor_app": None,
+    # conversation_history: list of dicts {role, content, df}
+    "conversation_history": [],
+    "memory_mode": "With Memory",
 }
 
 for k, v in defaults.items():
@@ -167,10 +217,10 @@ def parse_response(response):
 
 
 # -------------------------------------------------
-# COLUMN TYPE DETECTOR  (for tooltips / formatting)
+# COLUMN TYPE DETECTOR
 # -------------------------------------------------
 PERCENT_HINTS = re.compile(
-    r"(pct|percent|rate|ratio|share|margin|growth|yield)",
+    r"(pct|percent|rate|ratio|share|margin|growth|yield|percentage)",
     re.IGNORECASE
 )
 DOLLAR_HINTS = re.compile(
@@ -191,7 +241,6 @@ def detect_col_type(col_name: str, series: pd.Series):
         return "dollar"
     if QUANTITY_HINTS.search(col_name):
         return None
-    # heuristic: if numeric and max < 1.5, likely a ratio
     if pd.api.types.is_numeric_dtype(series):
         mx = series.dropna().abs().max()
         if mx is not None and 0 < mx <= 1.5:
@@ -199,25 +248,100 @@ def detect_col_type(col_name: str, series: pd.Series):
     return None
 
 
-def format_value(val, col_type):
-    if col_type == "dollar":
-        try:
-            return f"${val:,.2f}"
-        except Exception:
-            return str(val)
-    if col_type == "percent":
-        try:
-            v = float(val)
-            if v <= 1.5:
-                return f"{v*100:.2f}%"
-            return f"{v:.2f}%"
-        except Exception:
-            return str(val)
-    return val
+def is_already_percentage(series: pd.Series) -> bool:
+    """
+    True if values are already in 0–100 scale (e.g. 9.75, 10.2).
+    False if values are in 0–1 decimal ratio (e.g. 0.0975).
+    """
+    mx = series.dropna().abs().max()
+    if mx is None:
+        return False
+    return mx > 1.5
 
 
 # -------------------------------------------------
-# SMART SUGGESTIONS (static pool — extend as needed)
+# RESULT TABLE with correct % formatting
+# -------------------------------------------------
+def show_result_table(df: pd.DataFrame):
+    """
+    Render dataframe. For percentage columns:
+      - If values are already 0-100 scale (e.g. 9.75) → show as "9.75 %"
+      - If values are 0-1 decimal (e.g. 0.0975) → multiply ×100, show as "9.75 %"
+    For dollar columns → show as "$ 1,234.56"
+    """
+    df = df.copy()
+    col_config = {}
+
+    for col in df.columns:
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            continue
+
+        ct = detect_col_type(col, df[col])
+
+        if ct == "dollar":
+            col_config[col] = st.column_config.NumberColumn(
+                col,
+                help="💲 Dollar / Revenue metric",
+                format="$ %,.2f",
+            )
+
+        elif ct == "percent":
+            already_pct = is_already_percentage(df[col])
+            if not already_pct:
+                # Convert 0.0975 → 9.75
+                df[col] = df[col] * 100
+            col_config[col] = st.column_config.NumberColumn(
+                col,
+                help="📊 Percentage metric",
+                format="%.2f %%",
+            )
+        # quantity / other → no special config
+
+    st.dataframe(df, use_container_width=True, column_config=col_config)
+
+
+# -------------------------------------------------
+# BUILD MESSAGES WITH CONVERSATION CONTEXT
+# -------------------------------------------------
+def build_messages_with_context(current_query: str) -> list:
+    """
+    With Memory: inject last N turns as a context block so the LLM
+    can resolve follow-up references like 'those customers', 'that product'.
+    Without Memory: bare query only.
+    """
+    if st.session_state.memory_mode == "Without Memory":
+        return [HumanMessage(content=current_query)]
+
+    history = st.session_state.conversation_history
+    if not history:
+        return [HumanMessage(content=current_query)]
+
+    # Take last 6 turns (3 Q&A pairs) to keep token count low
+    recent = history[-6:]
+    context_lines = []
+    for turn in recent:
+        role_label = "User" if turn["role"] == "user" else "Assistant"
+        content = turn["content"]
+        if turn.get("df") is not None and not turn["df"].empty:
+            # Attach a small row preview so the LLM can reference actual values
+            df_preview = turn["df"].head(5).to_string(index=False)
+            content = f"{content}\n[Data preview:\n{df_preview}]"
+        context_lines.append(f"{role_label}: {content}")
+
+    context_block = "\n".join(context_lines)
+
+    full_prompt = (
+        "Previous conversation (use to resolve follow-up references like "
+        "'those customers', 'that region', 'the same period'):\n"
+        f"---\n{context_block}\n---\n\n"
+        f"Current question: {current_query}"
+    )
+
+    return [HumanMessage(content=full_prompt)]
+
+
+# -------------------------------------------------
+# SMART SUGGESTIONS
 # -------------------------------------------------
 SMART_SUGGESTIONS = [
     "Top 10 customers by revenue",
@@ -232,14 +356,20 @@ SMART_SUGGESTIONS = [
 
 
 def render_smart_suggestions():
-    st.markdown("**💡 Quick Suggestions:**")
+    st.markdown(
+        "<span style='color:rgba(255,255,255,0.45);font-size:0.76rem;'>"
+        "⚡ Quick Suggestions</span>",
+        unsafe_allow_html=True
+    )
     cols = st.columns(4)
     for idx, suggestion in enumerate(SMART_SUGGESTIONS):
         with cols[idx % 4]:
+            st.markdown('<div class="quickchip">', unsafe_allow_html=True)
             if st.button(suggestion, key=f"smart_{idx}"):
                 st.session_state.pending_query = suggestion
                 st.session_state.auto_run = True
                 st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
 
 # -------------------------------------------------
@@ -247,7 +377,6 @@ def render_smart_suggestions():
 # -------------------------------------------------
 @st.dialog("Connect to Database")
 def db_popup():
-
     credential_folder = "credentials"
     saved_connections = {}
 
@@ -287,7 +416,6 @@ def db_popup():
     pwd = st.text_input("Password", value=pwd, type="password")
 
     c1, c2 = st.columns(2)
-
     with c1:
         if st.button("🔌 Connect Now", use_container_width=True):
             try:
@@ -328,22 +456,78 @@ def db_popup():
 
 
 # -------------------------------------------------
-# TOP BAR
+# TOP BAR: Memory toggle + Connect DB
 # -------------------------------------------------
-c1, c2 = st.columns([8, 2])
+col_title, col_mem, col_conn = st.columns([5, 3, 2])
 
-with c2:
-    if st.button("🔌 Connect to DataBase"):
+with col_conn:
+    if st.button("🔌 Connect DB"):
         db_popup()
 
+with col_mem:
+    memory_choice = st.radio(
+        "🧠 Memory",
+        ["With Memory", "Without Memory"],
+        index=0 if st.session_state.memory_mode == "With Memory" else 1,
+        horizontal=True,
+        key="memory_radio"
+    )
+    if memory_choice != st.session_state.memory_mode:
+        st.session_state.memory_mode = memory_choice
+        if memory_choice == "Without Memory":
+            # Clear history when switching to no-memory mode
+            st.session_state.conversation_history = []
+
 if st.session_state.db_connected:
-    st.success("Connected Successfully ✅")
+    st.success("Connected ✅")
 else:
     st.warning("Not Connected")
 
 
 # -------------------------------------------------
-# APPLY FOLLOWUP
+# CONVERSATION HISTORY PANEL (With Memory only)
+# -------------------------------------------------
+if (
+    st.session_state.memory_mode == "With Memory"
+    and st.session_state.conversation_history
+):
+    with st.expander(
+        f"🕐 Conversation History  ({len(st.session_state.conversation_history)} turns)",
+        expanded=False
+    ):
+        btn_col = st.columns([7, 1])
+        with btn_col[1]:
+            if st.button("🗑 Clear", key="clear_history"):
+                st.session_state.conversation_history = []
+                st.session_state.last_df = None
+                st.session_state.last_response = ""
+                st.session_state.chart_df = None
+                st.session_state.followups = []
+                st.rerun()
+
+        for turn in st.session_state.conversation_history:
+            if turn["role"] == "user":
+                st.markdown(
+                    f'<div class="chat-user">'
+                    f'<div class="chat-label">You</div>'
+                    f'{turn["content"]}</div>',
+                    unsafe_allow_html=True
+                )
+            else:
+                preview = turn["content"]
+                if turn.get("df") is not None and not turn["df"].empty:
+                    r, c = turn["df"].shape
+                    preview = f"[Table: {r} rows × {c} cols]  {turn['content'][:80]}"
+                st.markdown(
+                    f'<div class="chat-ai">'
+                    f'<div class="chat-label">AI</div>'
+                    f'{preview}</div>',
+                    unsafe_allow_html=True
+                )
+
+
+# -------------------------------------------------
+# APPLY FOLLOWUP QUERY
 # -------------------------------------------------
 if st.session_state.pending_query:
     st.session_state.query_text = st.session_state.pending_query
@@ -351,7 +535,7 @@ if st.session_state.pending_query:
 
 
 # -------------------------------------------------
-# SMART SUGGESTIONS ROW
+# SMART SUGGESTIONS
 # -------------------------------------------------
 render_smart_suggestions()
 
@@ -361,43 +545,37 @@ render_smart_suggestions()
 # -------------------------------------------------
 query = st.text_area(
     "Ask your business question",
-    height=100,
+    height=90,
     key="query_text",
-    placeholder="Show top 10 customers for latest year"
+    placeholder="e.g. Show top 10 customers for latest year"
 )
 
 run = st.button("🚀 Run Analysis")
 
 
 # -------------------------------------------------
-# VISUALS  (enhanced: drill-down click, tooltips)
+# VISUALS
 # -------------------------------------------------
-def infer_col_format(col_name: str, series: pd.Series) -> str:
-    """Return plotly hovertemplate format token."""
+def infer_plotly_fmt(col_name: str, series: pd.Series) -> tuple:
+    """Returns (format_string, suffix_label)."""
     ct = detect_col_type(col_name, series)
     if ct == "dollar":
-        return "$,.2f"
+        return "$,.2f", ""
     if ct == "percent":
-        # Check if values already in 0-100 range
-        mx = series.dropna().abs().max()
-        if mx and mx > 2:
-            return ".2f%"    # e.g. 9.75 → shown as 9.75%
-        return ".2%"         # e.g. 0.0975 → shown as 9.75%
-    return ","
+        return ".2f", " %"
+    return ",.0f", ""
 
 
-def show_visual(df):
-
+def show_visual(df: pd.DataFrame):
     num_cols = df.select_dtypes(include="number").columns.tolist()
-
-    if len(num_cols) == 0:
+    if not num_cols:
         return None
 
     value_col = num_cols[-1]
-    label_col = [c for c in df.columns if c != value_col][0]
+    non_num = [c for c in df.columns if c not in num_cols]
+    label_col = non_num[0] if non_num else df.columns[0]
 
-    col_type = detect_col_type(value_col, df[value_col])
-    fmt = infer_col_format(value_col, df[value_col])
+    fmt, suffix = infer_plotly_fmt(value_col, df[value_col])
 
     chart = st.selectbox(
         "Choose Visual",
@@ -405,7 +583,6 @@ def show_visual(df):
         key="chart_selector"
     )
 
-    # ---- Neon blue color palette ----
     neon_colors = [
         "#00C8FF", "#0080CC", "#00FFD4", "#7B2FFF",
         "#FF6B35", "#FFD700", "#00FF88", "#FF3CAC",
@@ -423,7 +600,9 @@ def show_visual(df):
             title=f"{value_col} by {label_col}",
         )
         fig.update_traces(
-            hovertemplate=f"<b>%{{x}}</b><br>{value_col}: %{{y:{fmt}}}<extra></extra>"
+            hovertemplate=(
+                f"<b>%{{x}}</b><br>{value_col}: %{{y:{fmt}}}{suffix}<extra></extra>"
+            )
         )
         fig.update_layout(
             clickmode="event+select",
@@ -442,7 +621,9 @@ def show_visual(df):
             color_discrete_sequence=["#00C8FF"],
         )
         fig.update_traces(
-            hovertemplate=f"<b>%{{x}}</b><br>{value_col}: %{{y:{fmt}}}<extra></extra>",
+            hovertemplate=(
+                f"<b>%{{x}}</b><br>{value_col}: %{{y:{fmt}}}{suffix}<extra></extra>"
+            ),
             line=dict(width=3),
             marker=dict(size=8, color="#00C8FF",
                         line=dict(width=2, color="#fff"))
@@ -459,13 +640,17 @@ def show_visual(df):
             color_discrete_sequence=neon_colors,
             template="plotly_dark",
             title=f"{value_col} distribution",
-            hole=0.35,          # donut style — more modern
+            hole=0.35,
         )
         fig.update_traces(
             textposition="inside",
             textinfo="percent+label",
-            hovertemplate=f"<b>%{{label}}</b><br>{value_col}: %{{value:{fmt}}}<br>Share: %{{percent}}<extra></extra>",
-            pull=[0.05] * len(df),   # slight pull on all slices
+            hovertemplate=(
+                f"<b>%{{label}}</b><br>"
+                f"{value_col}: %{{value:{fmt}}}{suffix}<br>"
+                f"Share: %{{percent}}<extra></extra>"
+            ),
+            pull=[0.05] * len(df),
         )
         fig.update_layout(
             clickmode="event+select",
@@ -483,7 +668,10 @@ def show_visual(df):
             title=f"{value_col} treemap",
         )
         fig.update_traces(
-            hovertemplate=f"<b>%{{label}}</b><br>{value_col}: %{{value:{fmt}}}<extra></extra>",
+            hovertemplate=(
+                f"<b>%{{label}}</b><br>"
+                f"{value_col}: %{{value:{fmt}}}{suffix}<extra></extra>"
+            ),
             textfont=dict(size=14),
         )
         fig.update_layout(
@@ -492,7 +680,7 @@ def show_visual(df):
             font=dict(color="white"),
         )
 
-    # ---- Drill-down: show filtered table on click ----
+    # Drill-down on click
     event = st.plotly_chart(
         fig,
         use_container_width=True,
@@ -500,57 +688,20 @@ def show_visual(df):
         key="main_chart"
     )
 
-    # Handle click selection
     if event and event.get("selection") and event["selection"].get("points"):
-        selected_points = event["selection"]["points"]
-        selected_labels = [p.get("label") or p.get("x") for p in selected_points]
+        pts = event["selection"]["points"]
+        selected_labels = [p.get("label") or p.get("x") for p in pts]
         if selected_labels:
-            filtered = df[df[label_col].astype(str).isin(
-                [str(s) for s in selected_labels]
-            )]
+            filtered = df[
+                df[label_col].astype(str).isin([str(s) for s in selected_labels])
+            ]
             if not filtered.empty:
                 st.markdown(
                     f"**🔍 Drill-down: {', '.join(str(s) for s in selected_labels)}**"
                 )
-                st.dataframe(filtered, use_container_width=True)
+                show_result_table(filtered)
 
     return fig
-
-
-# -------------------------------------------------
-# RESULT TABLE  (with smart column tooltips)
-# -------------------------------------------------
-def show_result_table(df: pd.DataFrame):
-    """Render the dataframe with header tooltips showing unit type."""
-
-    # Build column config for st.dataframe
-    col_config = {}
-    for col in df.columns:
-        if pd.api.types.is_numeric_dtype(df[col]):
-            ct = detect_col_type(col, df[col])
-            if ct == "dollar":
-                col_config[col] = st.column_config.NumberColumn(
-                    col,
-                    help="💲 Dollar / Revenue metric",
-                    format="$ %.2f",
-                )
-            elif ct == "percent":
-                mx = df[col].dropna().abs().max()
-                if mx and mx > 2:
-                    col_config[col] = st.column_config.NumberColumn(
-                        col,
-                        help="📊 Percentage metric",
-                        format="%.2f %%",
-                    )
-                else:
-                    col_config[col] = st.column_config.NumberColumn(
-                        col,
-                        help="📊 Percentage metric",
-                        format="%.2%",
-                    )
-            # quantity → no special format
-
-    st.dataframe(df, use_container_width=True, column_config=col_config)
 
 
 # -------------------------------------------------
@@ -559,20 +710,25 @@ def show_result_table(df: pd.DataFrame):
 should_run = run or st.session_state.auto_run
 
 if should_run:
-
     st.session_state.auto_run = False
 
     if not st.session_state.db_connected:
         st.error("Please connect database first.")
         st.stop()
 
+    current_query = st.session_state.query_text.strip()
+    if not current_query:
+        st.warning("Please enter a question.")
+        st.stop()
+
     with st.spinner("Running AI Agents..."):
 
-        # Use cached supervisor app (performance boost)
         app = get_cached_supervisor()
 
+        messages = build_messages_with_context(current_query)
+
         result = app.invoke({
-            "messages": [HumanMessage(content=st.session_state.query_text)],
+            "messages": messages,
             "step": 0
         })
 
@@ -585,27 +741,54 @@ if should_run:
         st.session_state.last_response = final_text
 
         parsed = parse_response(final_text)
+        result_df = None
 
         if parsed:
             if parsed["type"] == "table":
-                df = pd.DataFrame(parsed["data"], columns=parsed["columns"])
-                st.session_state.last_df = df
-                st.session_state.chart_df = df
+                result_df = pd.DataFrame(
+                    parsed["data"], columns=parsed["columns"]
+                )
+                st.session_state.last_df = result_df
+                st.session_state.chart_df = result_df
             elif parsed["type"] == "text":
                 st.session_state.last_df = None
                 st.session_state.chart_df = None
 
-        # Run follow-up generation in background (don't block result display)
-        st.session_state.followups = get_followup_questions(
-            st.session_state.query_text
-        )
+        # Save to conversation history (With Memory only)
+        if st.session_state.memory_mode == "With Memory":
+            st.session_state.conversation_history.append({
+                "role": "user",
+                "content": current_query,
+                "df": None,
+            })
+
+            if result_df is not None:
+                ai_summary = f"Returned table: {result_df.shape[0]} rows, columns: {', '.join(result_df.columns.tolist())}"
+            elif parsed and parsed.get("type") == "text":
+                ai_summary = parsed.get("content", "")[:150]
+            else:
+                ai_summary = final_text[:150]
+
+            st.session_state.conversation_history.append({
+                "role": "ai",
+                "content": ai_summary,
+                "df": result_df,
+            })
+
+            # Keep bounded: last 20 entries = 10 Q&A pairs
+            if len(st.session_state.conversation_history) > 20:
+                st.session_state.conversation_history = (
+                    st.session_state.conversation_history[-20:]
+                )
+
+        # Follow-up suggestions
+        st.session_state.followups = get_followup_questions(current_query)
 
 
 # -------------------------------------------------
 # RESULT TABLE
 # -------------------------------------------------
 if st.session_state.last_df is not None:
-
     st.subheader("📊 Result")
     show_result_table(st.session_state.last_df)
 
@@ -616,36 +799,37 @@ if st.session_state.last_df is not None:
 fig = None
 
 if st.session_state.chart_df is not None:
-
     st.subheader("📈 Interactive Visual")
     fig = show_visual(st.session_state.chart_df)
 
 
 # -------------------------------------------------
-# FOLLOWUP QUESTIONS  (pill-style buttons)
+# FOLLOWUP QUESTIONS — transparent, no color
 # -------------------------------------------------
 if st.session_state.followups:
-
-    st.subheader("💡 Follow-up Questions")
+    st.markdown(
+        "<span style='color:rgba(255,255,255,0.4);font-size:0.76rem;'>"
+        "💬 Follow-up suggestions</span>",
+        unsafe_allow_html=True
+    )
     cols = st.columns(min(len(st.session_state.followups), 3))
-
     for i, q in enumerate(st.session_state.followups):
         with cols[i % len(cols)]:
+            st.markdown('<div class="followup-btn">', unsafe_allow_html=True)
             if st.button(q, key=f"fq_{i}"):
                 st.session_state.pending_query = q
                 st.session_state.auto_run = True
                 st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
 
 # -------------------------------------------------
 # PDF EXPORT
 # -------------------------------------------------
 if st.session_state.last_response:
-
     parsed = parse_response(st.session_state.last_response)
 
     if parsed:
-
         pdf = FPDF()
         pdf.add_page()
         pdf.set_auto_page_break(True, 15)
@@ -659,10 +843,9 @@ if st.session_state.last_response:
         pdf.ln(5)
 
         if parsed["type"] == "table":
-
             columns = parsed["columns"]
             data = parsed["data"]
-            col_width = 190 / len(columns)
+            col_width = 190 / max(len(columns), 1)
 
             pdf.set_font("Arial", "B", 10)
             for col in columns:
