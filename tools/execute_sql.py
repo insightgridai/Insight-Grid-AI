@@ -1,52 +1,76 @@
-from langchain.tools import tool
-from db.connection import get_db_connection
 import json
+import psycopg2
+
+from langchain.tools import tool
 
 
-@tool
-def execute_sql(query: str) -> str:
-    """
-    Executes SQL query and returns structured JSON output.
-    Works with PostgreSQL, SQLite, MySQL, etc.
-    """
+# ---------------------------------------------------
+# FACTORY TOOL
+# ---------------------------------------------------
+def get_execute_sql_tool(db_config):
 
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
+    @tool
+    def execute_sql(query: str) -> str:
+        """
+        Execute PostgreSQL SQL query and return JSON.
+        """
 
-        cur.execute(query)
+        conn = None
+        cur = None
 
-        # ----------------------------------------------------
-        # SELECT queries → return structured data
-        # ----------------------------------------------------
-        if cur.description is not None:
+        try:
+            conn = psycopg2.connect(
+                host=db_config["host"],
+                port=db_config["port"],
+                database=db_config["database"],
+                user=db_config["user"],
+                password=db_config["password"],
+                sslmode="require"
+            )
 
-            columns = [col[0] for col in cur.description]
-            rows = cur.fetchall()
+            cur = conn.cursor()
+            cur.execute(query)
 
-            result = {
-                "columns": columns,
-                "data": rows
-            }
+            if cur.description:
 
-        # ----------------------------------------------------
-        # INSERT / UPDATE / DELETE
-        # ----------------------------------------------------
-        else:
-            conn.commit()
+                columns = [
+                    col[0]
+                    for col in cur.description
+                ]
 
-            result = {
-                "status": "success",
-                "message": "Query executed successfully"
-            }
+                rows = cur.fetchall()
 
-        cur.close()
-        conn.close()
+                data = [
+                    list(row)
+                    for row in rows
+                ]
 
-        return json.dumps(result, default=str)
+                return json.dumps({
+                    "columns": columns,
+                    "data": data
+                })
 
-    except Exception as e:
+            else:
+                conn.commit()
 
-        return json.dumps({
-            "error": str(e)
-        })
+                return json.dumps({
+                    "columns": ["status"],
+                    "data": [["success"]]
+                })
+
+        except Exception as e:
+
+            return json.dumps({
+                "columns": ["error"],
+                "data": [[str(e)]]
+            })
+
+        finally:
+
+            if cur:
+                cur.close()
+
+            if conn:
+                conn.close()
+
+    return execute_sql
