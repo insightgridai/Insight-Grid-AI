@@ -29,7 +29,7 @@ def get_base64_image(image_path):
         return base64.b64encode(img.read()).decode()
 
 
-bg_img = get_base64_image("assets/image.avif")
+bg_img = get_base64_image("assets/backgroud6.jfif")
 
 st.markdown(
     f"""
