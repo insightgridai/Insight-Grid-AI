@@ -1,11 +1,13 @@
-# ------------------------------------------------------------
-# INSIGHT GRID AI - MAIN STREAMLIT APP
-# ------------------------------------------------------------
+# ==========================================================
+# FULL streamlit_app.py
+# FIXED VERSION (No DuplicateElementId Error)
+# Popup + Manual Entry + Saved Dropdown + Memory + Multi Agent
+# COPY PASTE DIRECTLY
+# ==========================================================
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import json
 import base64
 
 from langchain_core.messages import AIMessage
@@ -20,18 +22,18 @@ from utils.db_store import load_connections, save_connection
 from utils.pdf_export import create_pdf
 
 
-# ------------------------------------------------------------
+# ==========================================================
 # PAGE CONFIG
-# ------------------------------------------------------------
+# ==========================================================
 st.set_page_config(
     page_title="Insight Grid AI",
     layout="wide"
 )
 
 
-# ------------------------------------------------------------
-# LOAD BACKGROUND IMAGE
-# ------------------------------------------------------------
+# ==========================================================
+# BACKGROUND IMAGE
+# ==========================================================
 def get_base64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
@@ -39,9 +41,9 @@ def get_base64(path):
 bg = get_base64("assets/backgroud6.jfif")
 
 
-# ------------------------------------------------------------
-# STYLING
-# ------------------------------------------------------------
+# ==========================================================
+# CSS
+# ==========================================================
 st.markdown(f"""
 <style>
 
@@ -66,9 +68,9 @@ div[data-testid="stButton"] button {{
 """, unsafe_allow_html=True)
 
 
-# ------------------------------------------------------------
+# ==========================================================
 # SESSION STATE
-# ------------------------------------------------------------
+# ==========================================================
 defaults = {
     "db_connected": False,
     "db_config": {},
@@ -76,7 +78,8 @@ defaults = {
     "history": [],
     "last_response": "",
     "last_df": None,
-    "followups": []
+    "followups": [],
+    "open_popup": False
 }
 
 for k, v in defaults.items():
@@ -84,20 +87,23 @@ for k, v in defaults.items():
         st.session_state[k] = v
 
 
-# ------------------------------------------------------------
+# ==========================================================
 # HEADER
-# ------------------------------------------------------------
+# ==========================================================
 st.title("🤖 Insight Grid AI")
 st.caption("Where Data, Agents and Decisions Connect")
 
 
-# ------------------------------------------------------------
+# ==========================================================
 # TOP BAR
-# ------------------------------------------------------------
+# ==========================================================
 c1, c2, c3 = st.columns([2,2,2])
 
 with c1:
-    st.toggle("Memory Mode", key="memory_on")
+    st.toggle(
+        "Memory Mode",
+        key="memory_on"
+    )
 
 with c2:
     if st.session_state.db_connected:
@@ -106,38 +112,68 @@ with c2:
         st.warning("Not Connected")
 
 with c3:
-    if st.button("🔌 Connect Database"):
+    if st.button("🔌 Connect Database", key="open_db_btn"):
         st.session_state.open_popup = True
 
 
-# ------------------------------------------------------------
+# ==========================================================
 # DATABASE POPUP
-# ------------------------------------------------------------
+# ==========================================================
 @st.dialog("Connect to Database")
 def db_popup():
 
-    tab1, tab2 = st.tabs(["Manual Entry", "Saved Connections"])
+    tab1, tab2 = st.tabs([
+        "Manual Entry",
+        "Saved Connections"
+    ])
 
-    # --------------------------------------------------------
+    # ------------------------------------------------------
     # TAB 1 - MANUAL ENTRY
-    # --------------------------------------------------------
+    # ------------------------------------------------------
     with tab1:
 
         st.subheader("Manual Entry")
 
-        save_name = st.text_input("Connection Name")
+        save_name = st.text_input(
+            "Connection Name",
+            key="manual_name"
+        )
 
-        host = st.text_input("Host")
-        port = st.text_input("Port", "5432")
-        db = st.text_input("Database")
-        user = st.text_input("Username")
-        pwd = st.text_input("Password", type="password")
+        host = st.text_input(
+            "Host",
+            key="manual_host"
+        )
+
+        port = st.text_input(
+            "Port",
+            value="5432",
+            key="manual_port"
+        )
+
+        db = st.text_input(
+            "Database",
+            key="manual_db"
+        )
+
+        user = st.text_input(
+            "Username",
+            key="manual_user"
+        )
+
+        pwd = st.text_input(
+            "Password",
+            type="password",
+            key="manual_pwd"
+        )
 
         c1, c2 = st.columns(2)
 
         # CONNECT NOW
         with c1:
-            if st.button("Connect Now"):
+            if st.button(
+                "Connect Now",
+                key="manual_connect_btn"
+            ):
 
                 try:
                     cfg = {
@@ -159,9 +195,12 @@ def db_popup():
                 except Exception as e:
                     st.error(str(e))
 
-        # SAVE CONNECTION
+        # SAVE
         with c2:
-            if st.button("Save Connection"):
+            if st.button(
+                "Save Connection",
+                key="save_conn_btn"
+            ):
 
                 save_connection({
                     "name": save_name,
@@ -175,9 +214,9 @@ def db_popup():
                 st.success("Connection Saved")
 
 
-    # --------------------------------------------------------
+    # ------------------------------------------------------
     # TAB 2 - SAVED CONNECTIONS
-    # --------------------------------------------------------
+    # ------------------------------------------------------
     with tab2:
 
         st.subheader("Saved Connections")
@@ -185,7 +224,8 @@ def db_popup():
         saved = load_connections()
 
         if len(saved) == 0:
-            st.info("No Saved Connections Found")
+
+            st.info("No saved connections")
 
         else:
 
@@ -193,17 +233,25 @@ def db_popup():
 
             selected = st.selectbox(
                 "Select Connection",
-                names
+                names,
+                key="saved_dropdown"
             )
 
-            row = [x for x in saved if x["name"] == selected][0]
+            row = [
+                x for x in saved
+                if x["name"] == selected
+            ][0]
 
-            st.text_input("Host", value=row["host"], disabled=True)
-            st.text_input("Port", value=row["port"], disabled=True)
-            st.text_input("Database", value=row["database"], disabled=True)
-            st.text_input("Username", value=row["user"], disabled=True)
+            # USE WRITE INSTEAD OF TEXT INPUT
+            st.write("**Host:**", row["host"])
+            st.write("**Port:**", row["port"])
+            st.write("**Database:**", row["database"])
+            st.write("**Username:**", row["user"])
 
-            if st.button("Use Saved Connection"):
+            if st.button(
+                "Use Saved Connection",
+                key="use_saved_btn"
+            ):
 
                 st.session_state.db_connected = True
                 st.session_state.db_config = row
@@ -212,25 +260,29 @@ def db_popup():
 
 
 # OPEN POPUP
-if st.session_state.get("open_popup", False):
+if st.session_state.open_popup:
     db_popup()
 
 
-# ------------------------------------------------------------
+# ==========================================================
 # QUERY BOX
-# ------------------------------------------------------------
+# ==========================================================
 query = st.text_area(
     "Ask your business question",
     height=130,
-    placeholder="Show top 10 customers for latest year"
+    placeholder="Show top 10 customers for latest year",
+    key="main_query"
 )
 
-run = st.button("🚀 Run Analysis")
+run = st.button(
+    "🚀 Run Analysis",
+    key="run_btn"
+)
 
 
-# ------------------------------------------------------------
+# ==========================================================
 # RUN AGENTS
-# ------------------------------------------------------------
+# ==========================================================
 if run:
 
     if not st.session_state.db_connected:
@@ -257,6 +309,7 @@ if run:
     final = ""
 
     for msg in reversed(result["messages"]):
+
         if getattr(msg, "type", "") == "ai":
             final = msg.content
             break
@@ -283,14 +336,15 @@ if run:
     if st.session_state.memory_on:
 
         st.session_state.history += messages
+
         st.session_state.history.append(
             AIMessage(content=final)
         )
 
 
-# ------------------------------------------------------------
-# SHOW RESULT TABLE
-# ------------------------------------------------------------
+# ==========================================================
+# SHOW RESULT
+# ==========================================================
 if st.session_state.last_df is not None:
 
     st.subheader("📊 Result")
@@ -300,13 +354,19 @@ if st.session_state.last_df is not None:
         use_container_width=True
     )
 
-    # Chart
-    num = st.session_state.last_df.select_dtypes(include="number").columns
+    # CHART
+    num = st.session_state.last_df.select_dtypes(
+        include="number"
+    ).columns
 
     if len(num) > 0:
 
         val = num[-1]
-        lab = [c for c in st.session_state.last_df.columns if c != val][0]
+
+        lab = [
+            c for c in st.session_state.last_df.columns
+            if c != val
+        ][0]
 
         fig = px.bar(
             st.session_state.last_df,
@@ -314,26 +374,33 @@ if st.session_state.last_df is not None:
             y=val
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
 
 
-# ------------------------------------------------------------
-# FOLLOW-UP QUESTIONS
-# ------------------------------------------------------------
+# ==========================================================
+# FOLLOWUP QUESTIONS
+# ==========================================================
 if st.session_state.followups:
 
     st.subheader("💡 Follow-up Questions")
 
-    for i, q in enumerate(st.session_state.followups):
+    for i, q in enumerate(
+        st.session_state.followups
+    ):
 
-        if st.button(q, key=f"f_{i}"):
-
+        if st.button(
+            q,
+            key=f"followup_{i}"
+        ):
             st.rerun()
 
 
-# ------------------------------------------------------------
-# PDF DOWNLOAD
-# ------------------------------------------------------------
+# ==========================================================
+# DOWNLOAD PDF
+# ==========================================================
 if st.session_state.last_response:
 
     parsed = parse_response(
@@ -342,12 +409,16 @@ if st.session_state.last_response:
 
     if parsed:
 
-        file = create_pdf(parsed, query)
+        file = create_pdf(
+            parsed,
+            query
+        )
 
         with open(file, "rb") as f:
 
             st.download_button(
                 "📄 Download Report",
                 f,
-                "Insight_Report.pdf"
+                "Insight_Report.pdf",
+                key="pdf_btn"
             )
