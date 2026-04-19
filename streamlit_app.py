@@ -21,46 +21,32 @@ st.set_page_config(
 
 
 # -------------------------------------------------
-# BOTTOM IMAGE ONLY
-# Save image in assets/background.png
+# BACKGROUND IMAGE
+# Save image in: assets/background.png
 # -------------------------------------------------
 def get_base64_image(image_path):
     with open(image_path, "rb") as img:
         return base64.b64encode(img.read()).decode()
-
 
 bg_img = get_base64_image("assets/backgroud6.jfif")
 
 st.markdown(
     f"""
     <style>
-
     .stApp {{
-        background: linear-gradient(
-            90deg,
-            #050814,
-            #081426,
-            #0b1020
-        );
-    }}
-
-    .bottom-banner {{
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        height: 220px;
-        background-image: url("data:image/png;base64,{bg_img}");
+        background:
+            linear-gradient(
+                rgba(0,0,0,0.65),
+                rgba(0,0,0,0.65)
+            ),
+            url("data:image/png;base64,{bg_img}");
         background-size: cover;
-        background-position: center bottom;
-        background-repeat: no-repeat;
-        z-index: -1;
-        opacity: 0.95;
+        background-position: center;
+        background-attachment: fixed;
     }}
 
     .block-container {{
         padding-top: 2rem;
-        padding-bottom: 240px;
     }}
 
     div[data-testid="stButton"] button {{
@@ -71,10 +57,7 @@ st.markdown(
         background-color: rgba(255,255,255,0.06) !important;
         color: white !important;
     }}
-
     </style>
-
-    <div class="bottom-banner"></div>
     """,
     unsafe_allow_html=True
 )
@@ -108,7 +91,7 @@ for k, v in defaults.items():
 
 
 # -------------------------------------------------
-# RESPONSE PARSER
+# PARSE RESPONSE
 # -------------------------------------------------
 def parse_response(response):
     try:
@@ -173,7 +156,7 @@ else:
 
 
 # -------------------------------------------------
-# APPLY PENDING FOLLOWUP
+# APPLY FOLLOWUP
 # -------------------------------------------------
 if st.session_state.pending_query:
     st.session_state.query_text = st.session_state.pending_query
@@ -194,7 +177,7 @@ run = st.button("🚀 Run Analysis")
 
 
 # -------------------------------------------------
-# VISUAL FUNCTION
+# VISUALS
 # -------------------------------------------------
 def show_visual(df):
 
@@ -288,7 +271,7 @@ if should_run:
 
 
 # -------------------------------------------------
-# RESULT
+# RESULT TABLE
 # -------------------------------------------------
 if st.session_state.last_df is not None:
 
@@ -301,7 +284,7 @@ if st.session_state.last_df is not None:
 
 
 # -------------------------------------------------
-# VISUAL
+# VISUAL CHART
 # -------------------------------------------------
 fig = None
 
@@ -404,6 +387,7 @@ if st.session_state.last_response:
         pdf.output("report.pdf")
 
         with open("report.pdf", "rb") as f:
+
             st.download_button(
                 "📄 Download Report",
                 data=f,
