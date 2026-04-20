@@ -1,38 +1,31 @@
 # =============================================================
 # streamlit_app.py  —  Insight Grid AI
 #
-# FIXES IN THIS VERSION:
-#   ✅ "Not Connected" shown correctly; never flickers after save
-#   ✅ DB popup NEVER reopens after Run Analysis
-#   ✅ Run Analysis does NOT open popup if already connected
-#   ✅ Snowflake + PostgreSQL support with db_type dropdown
-#   ✅ Saved Connections pre-loaded from config/credentials.py
-#   ✅ KPI cards rendered (3–4 KPIs per query)
-#   ✅ Bar / Line / Pie / Treemap chart selector
-#   ✅ Chart image saved → included in PDF export
-#   ✅ Memory ON/OFF toggle works correctly
-#   ✅ Follow-up questions clickable → auto-run
-#   ✅ PDF download with KPIs + chart
-#   ✅ Domain-aware question suggestions in sidebar
-#   ✅ No broken imports; production ready
+# FIXES v3:
+#   ✅ Visualization always renders after analysis (root cause fixed)
+#   ✅ Follow-up click ONLY fills text box — does NOT auto-run
+#   ✅ Manual query edit works properly — no false "please enter question"
+#   ✅ Run Analysis button = teal/cyan (not red)
+#   ✅ Memory ON: last 6 msgs sent for context; capped at 20 stored
+#   ✅ Memory OFF: fresh single message each time
+#   ✅ box_value / fill_box pattern — clean query box management
+#   ✅ viz selectbox keys stable (viz_chart_type etc) — no wipe on rerun
+#   ✅ 8 chart types: Bar, H-Bar, Line, Area, Pie, Donut, Treemap, Scatter
 # =============================================================
 
-import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import base64
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
-from agents.supervisor_agent  import get_supervisor_app
-from agents.followup_agent    import get_followup_questions
-from db.connection            import test_connection
-from utils.parser             import parse_response
-from utils.memory             import build_messages
-from utils.db_store           import load_connections, save_connection
-from utils.pdf_export         import create_pdf
-from utils.cache              import load_bg
+from agents.supervisor_agent import get_supervisor_app
+from agents.followup_agent   import get_followup_questions
+from db.connection           import test_connection
+from utils.parser            import parse_response
+from utils.db_store          import load_connections, save_connection
+from utils.pdf_export        import create_pdf
+from utils.cache             import load_bg
 
 
 # =============================================================
@@ -72,47 +65,66 @@ st.markdown(f"""
 
 {bg_css}
 
-/* Inputs */
 textarea, input[type="text"], input[type="password"] {{
     background-color: rgba(255,255,255,0.07) !important;
     color: white !important;
     border-radius: 8px !important;
 }}
 
-/* Buttons */
 div[data-testid="stButton"] button {{
     border-radius: 10px;
 }}
 
-/* KPI cards */
+/* Teal primary button (Run Analysis) */
+div[data-testid="stButton"] button[kind="primary"] {{
+    background: linear-gradient(135deg, #00b4d8, #0077b6) !important;
+    border: none !important;
+    color: white !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.04em !important;
+}}
+div[data-testid="stButton"] button[kind="primary"]:hover {{
+    background: linear-gradient(135deg, #48cae4, #0096c7) !important;
+}}
+
 .kpi-card {{
-    background: rgba(30,30,80,0.85);
-    border: 1px solid rgba(30,144,255,0.35);
+    background: rgba(0,100,140,0.45);
+    border: 1px solid rgba(0,180,216,0.45);
     border-radius: 12px;
-    padding: 14px 10px;
+    padding: 16px 10px;
     text-align: center;
-    min-height: 80px;
+    min-height: 86px;
 }}
 .kpi-value {{
-    font-size: 1.45rem;
+    font-size: 1.5rem;
     font-weight: 700;
-    color: #1e90ff;
+    color: #48cae4;
     margin-bottom: 4px;
 }}
 .kpi-label {{
     font-size: 0.78rem;
-    color: #aaaacc;
+    color: #90e0ef;
     letter-spacing: 0.03em;
 }}
 
 /* Follow-up buttons */
 div[data-testid="stButton"] button[kind="secondary"] {{
-    background: rgba(30,144,255,0.12);
-    border: 1px solid rgba(30,144,255,0.4);
-    color: #90c8ff;
+    background: rgba(0,119,182,0.18) !important;
+    border: 1px solid rgba(0,180,216,0.45) !important;
+    color: #90e0ef !important;
     width: 100%;
     text-align: left;
-    padding: 8px 14px;
+}}
+div[data-testid="stButton"] button[kind="secondary"]:hover {{
+    background: rgba(0,180,216,0.28) !important;
+}}
+
+section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
+    background: rgba(0,100,140,0.3) !important;
+    border: 1px solid rgba(0,180,216,0.3) !important;
+    color: #90e0ef !important;
+    text-align: left;
+    width: 100%;
 }}
 
 </style>
@@ -120,26 +132,37 @@ div[data-testid="stButton"] button[kind="secondary"] {{
 
 
 # =============================================================
-# SESSION STATE DEFAULTS
+# SESSION STATE
 # =============================================================
 _defaults = {
-    "db_connected":   False,
-    "db_config":      {},
-    "memory_on":      True,
-    "history":        [],
-    "last_response":  "",
-    "last_df":        None,
-    "last_parsed":    None,
-    "followups":      [],
-    "show_popup":     False,
-    "pending_query":  "",
-    "auto_run":       False,
-    "chart_path":     None,
+    "db_connected":    False,
+    "db_config":       {},
+    "memory_on":       True,
+    "history":         [],
+    "last_response":   "",
+    "last_df":         None,
+    "last_parsed":     None,
+    "followups":       [],
+    "show_popup":      False,
+    "chart_path":      None,
+    "box_value":       "",       # current text area content
+    "fill_box":        "",       # pending fill from click (follow-up / suggestion)
+    "last_run_query":  "",       # query that was last executed
 }
 
 for k, v in _defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+
+# =============================================================
+# APPLY PENDING FILL
+# — triggered by follow-up or sidebar suggestion click
+# — ONLY fills the box; does NOT run analysis
+# =============================================================
+if st.session_state.fill_box:
+    st.session_state.box_value = st.session_state.fill_box
+    st.session_state.fill_box  = ""
 
 
 # =============================================================
@@ -179,74 +202,37 @@ def db_popup():
 
     tab_manual, tab_saved = st.tabs(["✏️ Manual Entry", "💾 Saved Connections"])
 
-    # ----------------------------------------------------------
-    # TAB 1 — Manual Entry
-    # ----------------------------------------------------------
     with tab_manual:
-
-        conn_name = st.text_input("Connection Name", key="p_name",
-                                  placeholder="My DB")
-
-        db_type = st.selectbox(
-            "Database Type",
-            ["postgresql", "snowflake"],
-            key="p_db_type",
+        conn_name = st.text_input("Connection Name", key="p_name", placeholder="My DB")
+        db_type   = st.selectbox(
+            "Database Type", ["postgresql", "snowflake"], key="p_db_type",
             format_func=lambda x: "PostgreSQL" if x == "postgresql" else "Snowflake"
         )
 
         if db_type == "postgresql":
-            host     = st.text_input("Host",     key="p_host",
-                                     placeholder="ep-xxx.neon.tech")
-            port     = st.text_input("Port",     value="5432", key="p_port")
-            database = st.text_input("Database", key="p_database",
-                                     placeholder="azure")
-            user     = st.text_input("Username", key="p_user",
-                                     placeholder="neondb_owner")
-            password = st.text_input("Password", type="password", key="p_password")
+            host     = st.text_input("Host",     key="p_host",     placeholder="ep-xxx.neon.tech")
+            port     = st.text_input("Port",     key="p_port",     value="5432")
+            database = st.text_input("Database", key="p_database", placeholder="azure")
+            user     = st.text_input("Username", key="p_user",     placeholder="neondb_owner")
+            password = st.text_input("Password", key="p_password", type="password")
+            cfg = {"name": conn_name, "db_type": "postgresql",
+                   "host": host, "port": port, "database": database,
+                   "user": user, "password": password}
+        else:
+            account   = st.text_input("Account Identifier", key="p_account",  value="dbcitil-nc64603")
+            user      = st.text_input("Username",           key="p_sf_user",  placeholder="INSIGHT")
+            password  = st.text_input("Password",           key="p_sf_pwd",   type="password")
+            warehouse = st.text_input("Warehouse",          key="p_warehouse", value="COMPUTE_WH")
+            database  = st.text_input("Database",           key="p_sf_db",    placeholder="MY_DATABASE")
+            schema    = st.text_input("Schema",             key="p_schema",   value="PUBLIC")
+            role      = st.text_input("Role (optional)",    key="p_role",     placeholder="SYSADMIN")
+            cfg = {"name": conn_name, "db_type": "snowflake", "account": account,
+                   "user": user, "password": password, "warehouse": warehouse,
+                   "database": database, "schema": schema, "role": role,
+                   "host": "", "port": ""}
 
-            cfg = {
-                "name":     conn_name,
-                "db_type":  "postgresql",
-                "host":     host,
-                "port":     port,
-                "database": database,
-                "user":     user,
-                "password": password,
-            }
-
-        else:  # snowflake
-            account   = st.text_input("Account Identifier", key="p_account",
-                                      placeholder="dbcitil-nc64603",
-                                      value="dbcitil-nc64603")
-            user      = st.text_input("Username",  key="p_sf_user",
-                                      placeholder="INSIGHT")
-            password  = st.text_input("Password",  type="password", key="p_sf_pwd")
-            warehouse = st.text_input("Warehouse", key="p_warehouse",
-                                      value="COMPUTE_WH")
-            database  = st.text_input("Database",  key="p_sf_db",
-                                      placeholder="MY_DATABASE")
-            schema    = st.text_input("Schema",    key="p_schema",
-                                      value="PUBLIC")
-            role      = st.text_input("Role (optional)", key="p_role",
-                                      placeholder="SYSADMIN")
-
-            cfg = {
-                "name":      conn_name,
-                "db_type":   "snowflake",
-                "account":   account,
-                "user":      user,
-                "password":  password,
-                "warehouse": warehouse,
-                "database":  database,
-                "schema":    schema,
-                "role":      role,
-                "host":      "",
-                "port":      "",
-            }
-
-        btn_c1, btn_c2 = st.columns(2)
-
-        with btn_c1:
+        c1, c2 = st.columns(2)
+        with c1:
             if st.button("⚡ Connect Now", use_container_width=True):
                 with st.spinner("Connecting…"):
                     ok, msg = test_connection(cfg)
@@ -254,47 +240,35 @@ def db_popup():
                     st.session_state.db_connected = True
                     st.session_state.db_config    = cfg
                     st.session_state.show_popup   = False
-                    st.success(msg)
                     st.rerun()
                 else:
                     st.error(msg)
-
-        with btn_c2:
+        with c2:
             if st.button("💾 Save Connection", use_container_width=True):
                 if not conn_name.strip():
-                    st.warning("Please enter a Connection Name before saving.")
+                    st.warning("Enter a connection name first.")
                 else:
                     save_connection(cfg)
                     st.success("Saved!")
 
-    # ----------------------------------------------------------
-    # TAB 2 — Saved Connections
-    # ----------------------------------------------------------
     with tab_saved:
-
         saved = load_connections()
-
         if not saved:
             st.info("No saved connections yet.")
         else:
             names    = [x["name"] for x in saved]
             selected = st.selectbox("Select Connection", names, key="p_sel")
             row      = next(x for x in saved if x["name"] == selected)
-
-            db_t = row.get("db_type", "postgresql").upper()
-            st.markdown(f"**Type:** {db_t}")
-
-            if row.get("db_type") == "snowflake":
+            dbt      = row.get("db_type", "postgresql").upper()
+            st.markdown(f"**Type:** {dbt}")
+            if dbt == "SNOWFLAKE":
                 st.markdown(f"**Account:** `{row.get('account','')}`")
                 st.markdown(f"**Warehouse:** `{row.get('warehouse','')}`")
-                st.markdown(f"**Database:** `{row.get('database','')}`")
-                st.markdown(f"**Schema:** `{row.get('schema','PUBLIC')}`")
-                st.markdown(f"**Username:** `{row.get('user','')}`")
             else:
                 st.markdown(f"**Host:** `{row.get('host','')}`")
                 st.markdown(f"**Port:** `{row.get('port','5432')}`")
-                st.markdown(f"**Database:** `{row.get('database','')}`")
-                st.markdown(f"**Username:** `{row.get('user','')}`")
+            st.markdown(f"**Database:** `{row.get('database','')}`")
+            st.markdown(f"**Username:** `{row.get('user','')}`")
 
             if st.button("✅ Use This Connection", use_container_width=True):
                 with st.spinner("Connecting…"):
@@ -303,25 +277,21 @@ def db_popup():
                     st.session_state.db_connected = True
                     st.session_state.db_config    = row
                     st.session_state.show_popup   = False
-                    st.success(msg)
                     st.rerun()
                 else:
                     st.error(msg)
 
 
-# ---------------------------------------------------------------
-# RENDER POPUP only when explicitly triggered
-# ---------------------------------------------------------------
 if st.session_state.show_popup:
     db_popup()
 
 
 # =============================================================
-# SIDEBAR — Suggested Questions
+# SIDEBAR
 # =============================================================
 with st.sidebar:
     st.markdown("### 💡 Suggested Questions")
-    st.caption("Click any question to run it instantly")
+    st.caption("Click to fill the box → then press **Run Analysis**")
 
     suggestions = [
         "Show top 10 customers by total revenue",
@@ -336,16 +306,15 @@ with st.sidebar:
 
     for i, s in enumerate(suggestions):
         if st.button(s, key=f"sug_{i}", use_container_width=True):
-            st.session_state.pending_query = s
-            st.session_state.auto_run      = True
+            st.session_state.fill_box = s
             st.rerun()
 
     st.divider()
     st.markdown("### 🗄️ Active Connection")
     if st.session_state.db_connected:
         cfg  = st.session_state.db_config
-        dbt  = cfg.get("db_type", "postgresql").upper()
         name = cfg.get("name", "—")
+        dbt  = cfg.get("db_type", "postgresql").upper()
         st.success(f"**{name}**\n\n`{dbt}`")
         if st.button("🔌 Disconnect", use_container_width=True):
             st.session_state.db_connected = False
@@ -354,230 +323,249 @@ with st.sidebar:
     else:
         st.warning("No database connected")
 
+    if st.session_state.memory_on and st.session_state.history:
+        st.divider()
+        st.markdown("### 🧠 Conversation History")
+        count = len(st.session_state.history)
+        st.caption(f"{count // 2} exchange(s) stored")
+        if st.button("🗑️ Clear History", use_container_width=True):
+            st.session_state.history = []
+            st.rerun()
+
 
 # =============================================================
-# APPLY PENDING QUERY (from follow-up / suggestion click)
-# =============================================================
-if st.session_state.pending_query:
-    pq = st.session_state.pending_query
-    st.session_state.pending_query = ""
-else:
-    pq = ""
-
-
-# =============================================================
-# QUERY INPUT BOX
+# QUERY BOX
+# — value = box_value (updated by fill_box or user typing)
+# — user can freely type / edit at any time
 # =============================================================
 query = st.text_area(
     "💬 Ask your business question",
     height=110,
-    value=pq if pq else "",
-    placeholder="e.g. Show top 10 customers by total revenue for latest year"
+    value=st.session_state.box_value,
+    placeholder="e.g. Show top 10 customers by total revenue for latest year",
+    key="query_widget"
 )
 
-run = st.button("🚀 Run Analysis", use_container_width=False, type="primary")
+# Sync typed value back so it survives reruns from other widgets
+st.session_state.box_value = query
+
+run_clicked = st.button("🚀 Run Analysis", type="primary")
 
 
 # =============================================================
-# RUN ANALYSIS
+# RUN ANALYSIS  — fires ONLY on explicit button click
 # =============================================================
-should_run = run or st.session_state.auto_run
+if run_clicked:
 
-if should_run:
+    st.session_state.show_popup = False
 
-    st.session_state.auto_run   = False
-    st.session_state.show_popup = False   # ← KEY FIX: never open popup on run
+    active_query = query.strip()
 
-    active_query = pq if pq else query
-
-    if not active_query.strip():
-        st.warning("Please enter a question.")
+    if not active_query:
+        st.warning("⚠️ Please type a question before running analysis.")
         st.stop()
 
     if not st.session_state.db_connected:
-        st.error("❌ Please connect to a database first using the 'Connect Database' button.")
+        st.error("❌ Please connect to a database first.")
         st.stop()
 
-    messages = build_messages(
-        active_query,
-        st.session_state.memory_on,
-        st.session_state.history
-    )
+    # Build message list
+    if st.session_state.memory_on and st.session_state.history:
+        # Keep last 6 msgs (3 exchanges) to limit tokens
+        recent = st.session_state.history[-6:]
+        messages = recent + [HumanMessage(content=active_query)]
+    else:
+        messages = [HumanMessage(content=active_query)]
 
     app = get_supervisor_app(st.session_state.db_config)
 
     with st.spinner("🤖 Running AI Agents… (Analyst → Expert → Reviewer)"):
-        result = app.invoke({
-            "messages": messages,
-            "step":     0
-        })
+        result = app.invoke({"messages": messages, "step": 0})
 
-    # Extract last AI message
+    # Get final AI response
     final = ""
     for msg in reversed(result["messages"]):
         if getattr(msg, "type", "") == "ai":
             final = msg.content
             break
 
-    st.session_state.last_response = final
+    st.session_state.last_response  = final
+    st.session_state.last_run_query = active_query
+    st.session_state.chart_path     = None   # reset chart for new result
 
     parsed = parse_response(final)
     st.session_state.last_parsed = parsed
 
-    if parsed and isinstance(parsed, dict):
-        if parsed.get("type") == "table":
-            st.session_state.last_df = pd.DataFrame(
-                parsed.get("data", []),
-                columns=parsed.get("columns", [])
-            )
-        else:
-            st.session_state.last_df = None
+    if parsed and isinstance(parsed, dict) and parsed.get("type") == "table":
+        st.session_state.last_df = pd.DataFrame(
+            parsed.get("data", []),
+            columns=parsed.get("columns", [])
+        )
     else:
         st.session_state.last_df = None
 
     # Follow-up questions
     st.session_state.followups = get_followup_questions(active_query)
 
-    # Memory
+    # Store in memory (cap at 20 messages = 10 exchanges)
     if st.session_state.memory_on:
-        st.session_state.history += messages
+        st.session_state.history.append(HumanMessage(content=active_query))
         st.session_state.history.append(AIMessage(content=final))
+        if len(st.session_state.history) > 20:
+            st.session_state.history = st.session_state.history[-20:]
 
 
 # =============================================================
-# KPI CARDS
+# ── RESULTS  (always read from session state) ──
 # =============================================================
 parsed = st.session_state.last_parsed
 
+
+# ── KPI CARDS ──────────────────────────────────────────────
 if parsed and isinstance(parsed, dict):
     kpis = parsed.get("kpis", [])
     if kpis:
         st.subheader("📌 Key Metrics")
-        cols = st.columns(len(kpis))
+        kpi_cols = st.columns(len(kpis))
         for i, kpi in enumerate(kpis):
-            with cols[i]:
+            with kpi_cols[i]:
                 st.markdown(
-                    f"""
-                    <div class="kpi-card">
-                        <div class="kpi-value">{kpi.get('value','—')}</div>
-                        <div class="kpi-label">{kpi.get('label','')}</div>
-                    </div>
-                    """,
+                    f'<div class="kpi-card">'
+                    f'<div class="kpi-value">{kpi.get("value","—")}</div>'
+                    f'<div class="kpi-label">{kpi.get("label","")}</div>'
+                    f'</div>',
                     unsafe_allow_html=True
                 )
         st.markdown("")
 
 
-# =============================================================
-# SUMMARY
-# =============================================================
+# ── SUMMARY ────────────────────────────────────────────────
 if parsed and isinstance(parsed, dict):
     summary = parsed.get("summary", "")
     if summary:
         st.info(f"💡 {summary}")
 
 
-# =============================================================
-# DATA TABLE
-# =============================================================
+# ── DATA TABLE ─────────────────────────────────────────────
 if st.session_state.last_df is not None:
     st.subheader("📊 Structured Result")
     st.dataframe(st.session_state.last_df, use_container_width=True)
 
 
-# =============================================================
-# INTERACTIVE VISUALIZATION
-# =============================================================
-chart_fig  = None
-chart_path = None
-
+# ── INTERACTIVE VISUALIZATION ──────────────────────────────
+# FIX: Read df from session state, use stable widget keys (viz_*)
+# so selectbox values survive rerun without being wiped.
 if st.session_state.last_df is not None:
 
-    df      = st.session_state.last_df
+    df       = st.session_state.last_df
+    all_cols = df.columns.tolist()
     num_cols = df.select_dtypes(include="number").columns.tolist()
 
     if num_cols:
         st.subheader("📈 Interactive Visualization")
 
-        v_col1, v_col2, v_col3 = st.columns([2, 2, 2])
+        vc1, vc2, vc3 = st.columns([2, 2, 2])
 
-        with v_col1:
+        with vc1:
             chart_type = st.selectbox(
                 "Chart Type",
-                ["Bar", "Line", "Pie", "Treemap", "Scatter"],
-                key="chart_type"
+                ["Bar", "Horizontal Bar", "Line", "Area",
+                 "Pie", "Donut", "Treemap", "Scatter"],
+                key="viz_chart_type"
             )
-
-        with v_col2:
+        with vc2:
             value_col = st.selectbox(
-                "Value (Y-axis)",
+                "Value (metric)",
                 num_cols,
                 index=len(num_cols) - 1,
-                key="value_col"
+                key="viz_value_col"
+            )
+        with vc3:
+            cat_cols  = [c for c in all_cols if c != value_col] or all_cols
+            label_col = st.selectbox(
+                "Label / Group",
+                cat_cols,
+                key="viz_label_col"
             )
 
-        with v_col3:
-            label_cols = [c for c in df.columns if c != value_col]
-            label_col  = st.selectbox(
-                "Label (X-axis / Group)",
-                label_cols,
-                key="label_col"
-            )
+        chart_fig = None
+        title_str = f"{value_col} by {label_col}"
 
-        # Build chart
         if chart_type == "Bar":
             chart_fig = px.bar(
                 df, x=label_col, y=value_col,
-                color=value_col,
-                color_continuous_scale="Blues",
-                title=f"{value_col} by {label_col}"
+                color=value_col, color_continuous_scale="Blues",
+                title=title_str, text_auto=True
+            )
+        elif chart_type == "Horizontal Bar":
+            chart_fig = px.bar(
+                df, x=value_col, y=label_col,
+                orientation="h",
+                color=value_col, color_continuous_scale="Teal",
+                title=title_str, text_auto=True
             )
         elif chart_type == "Line":
             chart_fig = px.line(
                 df, x=label_col, y=value_col,
-                markers=True,
-                title=f"{value_col} over {label_col}"
+                markers=True, title=title_str
+            )
+        elif chart_type == "Area":
+            chart_fig = px.area(
+                df, x=label_col, y=value_col,
+                title=title_str
             )
         elif chart_type == "Pie":
             chart_fig = px.pie(
                 df, names=label_col, values=value_col,
-                title=f"{value_col} by {label_col}"
+                title=title_str
+            )
+        elif chart_type == "Donut":
+            chart_fig = px.pie(
+                df, names=label_col, values=value_col,
+                hole=0.45, title=title_str
             )
         elif chart_type == "Treemap":
             chart_fig = px.treemap(
                 df, path=[label_col], values=value_col,
-                title=f"{value_col} — Treemap"
+                title=title_str
             )
         elif chart_type == "Scatter":
             chart_fig = px.scatter(
                 df, x=label_col, y=value_col,
-                title=f"{value_col} vs {label_col}"
+                size=value_col, color=value_col,
+                color_continuous_scale="Blues",
+                title=title_str
             )
 
-        if chart_fig:
+        if chart_fig is not None:
             chart_fig.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(10,10,30,0.6)",
                 font_color="white",
+                title_font_color="#48cae4",
+                legend=dict(bgcolor="rgba(0,0,0,0)"),
+                margin=dict(l=20, r=20, t=50, b=20),
             )
+            chart_fig.update_xaxes(gridcolor="rgba(255,255,255,0.08)")
+            chart_fig.update_yaxes(gridcolor="rgba(255,255,255,0.08)")
+
             st.plotly_chart(chart_fig, use_container_width=True)
 
-            # Save chart for PDF
+            # Save for PDF
             try:
-                chart_path = "chart_export.png"
-                chart_fig.write_image(chart_path)
-                st.session_state.chart_path = chart_path
+                cp = "chart_export.png"
+                chart_fig.write_image(cp)
+                st.session_state.chart_path = cp
             except Exception:
-                st.session_state.chart_path = None
+                pass
 
 
-# =============================================================
-# TEXT RESPONSE (if no table)
-# =============================================================
+# ── TEXT RESULT (no table) ────────────────────────────────
 if (
     st.session_state.last_response
     and st.session_state.last_df is None
     and parsed
+    and isinstance(parsed, dict)
     and parsed.get("type") == "text"
 ):
     st.subheader("💬 Analysis Result")
@@ -586,15 +574,17 @@ if (
 
 # =============================================================
 # FOLLOW-UP QUESTIONS
+# — click fills box only; user presses Run Analysis to execute
 # =============================================================
 if st.session_state.followups:
     st.subheader("🔁 Follow-up Questions")
+    st.caption("Click any question to load it → then press **Run Analysis**")
     fq_cols = st.columns(2)
     for i, q in enumerate(st.session_state.followups):
         with fq_cols[i % 2]:
             if st.button(q, key=f"fq_{i}", use_container_width=True):
-                st.session_state.pending_query = q
-                st.session_state.auto_run      = True
+                st.session_state.fill_box  = q
+                st.session_state.box_value = q
                 st.rerun()
 
 
@@ -602,24 +592,20 @@ if st.session_state.followups:
 # PDF DOWNLOAD
 # =============================================================
 if st.session_state.last_response and st.session_state.last_parsed:
-
     p = st.session_state.last_parsed
-
     if p.get("type") in ("table", "text"):
         try:
             pdf_file = create_pdf(
                 p,
-                query or pq,
+                st.session_state.last_run_query or query,
                 chart_path=st.session_state.get("chart_path")
             )
-
             with open(pdf_file, "rb") as f:
                 st.download_button(
-                    label="📄 Download Report (PDF)",
+                    "📄 Download Report (PDF)",
                     data=f,
                     file_name="Insight_Report.pdf",
                     mime="application/pdf",
-                    use_container_width=False
                 )
         except Exception as e:
-            st.caption(f"PDF export error: {e}")
+            st.caption(f"PDF note: {e}")
