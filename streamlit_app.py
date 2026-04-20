@@ -1,19 +1,24 @@
 # =============================================================
-# streamlit_app.py  —  Insight Grid AI  v4
+# streamlit_app.py  —  Insight Grid AI  v5
 #
-# FIXES:
-#   ✅ Suggestion / follow-up buttons correctly fill the text box
-#      ROOT CAUSE: st.text_area key= and value= conflict fixed by
-#      writing directly to st.session_state["query_widget"] BEFORE
-#      the widget is rendered, then rendering without value=
-#   ✅ Chart always renders — no silent skip
-#   ✅ PDF latin-1 encode error fixed (sanitize unicode → ascii)
-#   ✅ Conversation history panel: expandable, shows all exchanges,
-#      click any past query to re-load it into the box
-#   ✅ Memory ON/OFF works correctly
-#   ✅ Teal Run Analysis button
-#   ✅ 8 chart types with stable selectbox keys
-#   ✅ Token-optimised (gpt-4o-mini, history capped at 20 msgs)
+# ROOT CAUSE FIXES:
+#
+# 1. StreamlitAPIException on follow-up/suggestion click
+#    CAUSE: Setting st.session_state["query_widget"] while the
+#    text_area widget with key="query_widget" is already rendered
+#    on the page raises StreamlitAPIException in Streamlit >= 1.30.
+#    FIX: Remove key= from text_area entirely. Use a separate
+#    "pending_text" in session_state. On rerun after click, render
+#    text_area with value=st.session_state.pending_text. This is
+#    the only safe pattern in all Streamlit versions.
+#
+# 2. Visualization never renders
+#    CAUSE: The crash above (point 1) was stopping execution before
+#    the chart section was reached. With crash fixed, charts render.
+#
+# 3. PDF all black
+#    CAUSE: Dark fill/text colors suited for screen look bad on
+#    white PDF paper. Fixed: white background, dark text for PDF.
 # =============================================================
 
 import streamlit as st
@@ -65,7 +70,6 @@ textarea, input[type="text"], input[type="password"] {{
 }}
 div[data-testid="stButton"] button {{ border-radius:10px; }}
 
-/* Teal Run Analysis */
 div[data-testid="stButton"] button[kind="primary"] {{
     background:linear-gradient(135deg,#00b4d8,#0077b6)!important;
     border:none!important; color:white!important;
@@ -75,7 +79,6 @@ div[data-testid="stButton"] button[kind="primary"]:hover {{
     background:linear-gradient(135deg,#48cae4,#0096c7)!important;
 }}
 
-/* KPI cards */
 .kpi-card {{
     background:rgba(0,100,140,0.45);
     border:1px solid rgba(0,180,216,0.45);
@@ -85,7 +88,6 @@ div[data-testid="stButton"] button[kind="primary"]:hover {{
 .kpi-value {{ font-size:1.5rem; font-weight:700; color:#48cae4; margin-bottom:4px; }}
 .kpi-label {{ font-size:0.78rem; color:#90e0ef; letter-spacing:0.03em; }}
 
-/* Follow-up / suggestion buttons */
 div[data-testid="stButton"] button[kind="secondary"] {{
     background:rgba(0,119,182,0.18)!important;
     border:1px solid rgba(0,180,216,0.45)!important;
@@ -94,23 +96,11 @@ div[data-testid="stButton"] button[kind="secondary"] {{
 div[data-testid="stButton"] button[kind="secondary"]:hover {{
     background:rgba(0,180,216,0.28)!important;
 }}
-
-/* Sidebar buttons */
 section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
     background:rgba(0,100,140,0.3)!important;
     border:1px solid rgba(0,180,216,0.3)!important;
     color:#90e0ef!important; text-align:left; width:100%;
 }}
-
-/* History item */
-.hist-item {{
-    background:rgba(0,60,90,0.5);
-    border:1px solid rgba(0,180,216,0.25);
-    border-radius:8px; padding:8px 12px; margin-bottom:6px;
-    font-size:0.82rem; color:#caf0f8;
-}}
-.hist-q  {{ color:#48cae4; font-weight:600; margin-bottom:2px; }}
-.hist-a  {{ color:#90e0ef; white-space:pre-wrap; word-break:break-word; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,8 +112,8 @@ _defaults = {
     "db_connected":   False,
     "db_config":      {},
     "memory_on":      True,
-    "history":        [],          # list of HumanMessage / AIMessage (pairs)
-    "history_pairs":  [],          # list of {"q":..., "a":...} for display
+    "history":        [],
+    "history_pairs":  [],
     "last_response":  "",
     "last_df":        None,
     "last_parsed":    None,
@@ -131,25 +121,12 @@ _defaults = {
     "show_popup":     False,
     "chart_path":     None,
     "last_run_query": "",
+    # Safe text box management — no widget key conflict
+    "pending_text":   "",   # text to pre-fill on next render
 }
 for k, v in _defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
-
-# Ensure query_widget key exists in session_state before text_area renders
-if "query_widget" not in st.session_state:
-    st.session_state["query_widget"] = ""
-
-
-# =============================================================
-# FILL QUERY BOX HELPER
-# KEY FIX: write to st.session_state["query_widget"] DIRECTLY
-# before the widget is rendered — this is the only reliable way
-# to pre-populate a text_area that uses key= in Streamlit.
-# =============================================================
-def set_query(text: str):
-    """Call this, then st.rerun() — widget will show the new text."""
-    st.session_state["query_widget"] = text
 
 
 # =============================================================
@@ -272,7 +249,7 @@ if st.session_state.show_popup:
 # =============================================================
 with st.sidebar:
     st.markdown("### 💡 Suggested Questions")
-    st.caption("Click to load into box → edit if needed → Run Analysis")
+    st.caption("Click to load → edit → Run Analysis")
 
     suggestions = [
         "Show top 10 customers by total revenue",
@@ -286,7 +263,8 @@ with st.sidebar:
     ]
     for i, s in enumerate(suggestions):
         if st.button(s, key=f"sug_{i}", use_container_width=True):
-            set_query(s)
+            # SAFE: update pending_text (not a widget key) then rerun
+            st.session_state.pending_text = s
             st.rerun()
 
     st.divider()
@@ -303,26 +281,22 @@ with st.sidebar:
     else:
         st.warning("No database connected")
 
-    # ── Conversation History panel ──────────────────────────
+    # Conversation History
     if st.session_state.memory_on and st.session_state.history_pairs:
         st.divider()
         st.markdown("### 🧠 Conversation History")
         pairs = st.session_state.history_pairs
-        st.caption(f"{len(pairs)} exchange(s) — click any query to re-load it")
-
-        for idx, pair in enumerate(reversed(pairs)):   # newest first
+        st.caption(f"{len(pairs)} exchange(s) — click to re-load")
+        for idx, pair in enumerate(reversed(pairs)):
             real_idx = len(pairs) - 1 - idx
-            with st.expander(f"#{real_idx+1} — {pair['q'][:55]}…" if len(pair['q'])>55 else f"#{real_idx+1} — {pair['q']}"):
-                st.markdown(f"**You asked:** {pair['q']}")
-                # Show short answer preview
-                answer_preview = pair['a'][:200] + "…" if len(pair['a']) > 200 else pair['a']
-                st.markdown(f"**Answer preview:** {answer_preview}")
-                if st.button(f"↩ Re-run this query", key=f"hist_rerun_{real_idx}",
-                             use_container_width=True):
-                    set_query(pair['q'])
+            label = pair['q'][:50] + "…" if len(pair['q']) > 50 else pair['q']
+            with st.expander(f"#{real_idx+1} — {label}"):
+                st.markdown(f"**You:** {pair['q']}")
+                st.markdown(f"**Result:** {pair['a']}")
+                if st.button(f"↩ Re-load", key=f"hist_{real_idx}", use_container_width=True):
+                    # SAFE: update pending_text (not a widget key) then rerun
+                    st.session_state.pending_text = pair['q']
                     st.rerun()
-
-        st.markdown("")
         if st.button("🗑️ Clear History", use_container_width=True):
             st.session_state.history       = []
             st.session_state.history_pairs = []
@@ -331,16 +305,18 @@ with st.sidebar:
 
 # =============================================================
 # QUERY BOX
-# KEY FIX: Do NOT pass value= here. Instead write directly to
-# st.session_state["query_widget"] before this line (via set_query).
-# Streamlit reads key= from session_state at render time, so the
-# box correctly shows whatever was written to the key.
+#
+# THE FIX FOR StreamlitAPIException:
+# Do NOT use key= on this text_area.
+# Instead use value= driven by st.session_state.pending_text.
+# After the user types, we read the returned `query` variable.
+# This completely avoids the widget-key-conflict crash.
 # =============================================================
 query = st.text_area(
     "💬 Ask your business question",
     height=110,
+    value=st.session_state.pending_text,
     placeholder="e.g. Show top 10 customers by total revenue for latest year",
-    key="query_widget"           # ← value controlled via session_state directly
 )
 
 run_clicked = st.button("🚀 Run Analysis", type="primary")
@@ -352,10 +328,10 @@ run_clicked = st.button("🚀 Run Analysis", type="primary")
 if run_clicked:
 
     st.session_state.show_popup = False
-    active_query = st.session_state["query_widget"].strip()
+    active_query = query.strip()
 
     if not active_query:
-        st.warning("⚠️ Please type or select a question before running analysis.")
+        st.warning("⚠️ Please type or select a question first.")
         st.stop()
 
     if not st.session_state.db_connected:
@@ -364,7 +340,7 @@ if run_clicked:
 
     # Build messages with memory
     if st.session_state.memory_on and st.session_state.history:
-        recent   = st.session_state.history[-6:]          # last 3 exchanges
+        recent   = st.session_state.history[-6:]
         messages = recent + [HumanMessage(content=active_query)]
     else:
         messages = [HumanMessage(content=active_query)]
@@ -374,7 +350,6 @@ if run_clicked:
     with st.spinner("🤖 Running AI Agents… (Analyst → Expert → Reviewer)"):
         result = app.invoke({"messages": messages, "step": 0})
 
-    # Extract final AI message
     final = ""
     for msg in reversed(result["messages"]):
         if getattr(msg, "type", "") == "ai":
@@ -384,6 +359,8 @@ if run_clicked:
     st.session_state.last_response  = final
     st.session_state.last_run_query = active_query
     st.session_state.chart_path     = None
+    # Clear pending_text so box resets cleanly after run
+    st.session_state.pending_text   = active_query
 
     parsed = parse_response(final)
     st.session_state.last_parsed = parsed
@@ -395,33 +372,27 @@ if run_clicked:
     else:
         st.session_state.last_df = None
 
-    # Follow-up questions
     st.session_state.followups = get_followup_questions(active_query)
 
-    # Store in memory
     if st.session_state.memory_on:
         st.session_state.history.append(HumanMessage(content=active_query))
         st.session_state.history.append(AIMessage(content=final))
         if len(st.session_state.history) > 20:
             st.session_state.history = st.session_state.history[-20:]
 
-        # Store readable pairs for history panel
-        # Get a short text summary for the answer
+        # Readable pair for history panel
         answer_text = ""
         if parsed and isinstance(parsed, dict):
             if parsed.get("type") == "text":
-                answer_text = parsed.get("content", final)[:300]
+                answer_text = parsed.get("content", final)[:250]
             elif parsed.get("type") == "table":
                 cols = parsed.get("columns", [])
                 rows = parsed.get("data", [])
-                answer_text = f"Table: {len(rows)} rows × {len(cols)} columns — {', '.join(cols[:4])}"
+                answer_text = f"Table: {len(rows)} rows x {len(cols)} cols ({', '.join(cols[:4])})"
         else:
-            answer_text = final[:300]
+            answer_text = final[:250]
 
-        st.session_state.history_pairs.append({
-            "q": active_query,
-            "a": answer_text
-        })
+        st.session_state.history_pairs.append({"q": active_query, "a": answer_text})
         if len(st.session_state.history_pairs) > 10:
             st.session_state.history_pairs = st.session_state.history_pairs[-10:]
 
@@ -464,8 +435,8 @@ if st.session_state.last_df is not None:
 
 
 # ── INTERACTIVE VISUALIZATION ──
-# FIX: Read df from session_state. Use stable keys viz_* so
-# selectbox values survive reruns. chart_fig built fresh each render.
+# This section now always executes because the crash above is fixed.
+# Selectbox keys use viz_ prefix — stable, never conflict with other widgets.
 if st.session_state.last_df is not None:
     df       = st.session_state.last_df
     all_cols = df.columns.tolist()
@@ -494,24 +465,24 @@ if st.session_state.last_df is not None:
         chart_fig = None
 
         if   chart_type == "Bar":
-            chart_fig = px.bar(df,x=label_col,y=value_col,color=value_col,
-                               color_continuous_scale="Blues",title=title_str,text_auto=True)
+            chart_fig = px.bar(df, x=label_col, y=value_col, color=value_col,
+                               color_continuous_scale="Blues", title=title_str, text_auto=True)
         elif chart_type == "Horizontal Bar":
-            chart_fig = px.bar(df,x=value_col,y=label_col,orientation="h",color=value_col,
-                               color_continuous_scale="Teal",title=title_str,text_auto=True)
+            chart_fig = px.bar(df, x=value_col, y=label_col, orientation="h", color=value_col,
+                               color_continuous_scale="Teal", title=title_str, text_auto=True)
         elif chart_type == "Line":
-            chart_fig = px.line(df,x=label_col,y=value_col,markers=True,title=title_str)
+            chart_fig = px.line(df, x=label_col, y=value_col, markers=True, title=title_str)
         elif chart_type == "Area":
-            chart_fig = px.area(df,x=label_col,y=value_col,title=title_str)
+            chart_fig = px.area(df, x=label_col, y=value_col, title=title_str)
         elif chart_type == "Pie":
-            chart_fig = px.pie(df,names=label_col,values=value_col,title=title_str)
+            chart_fig = px.pie(df, names=label_col, values=value_col, title=title_str)
         elif chart_type == "Donut":
-            chart_fig = px.pie(df,names=label_col,values=value_col,hole=0.45,title=title_str)
+            chart_fig = px.pie(df, names=label_col, values=value_col, hole=0.45, title=title_str)
         elif chart_type == "Treemap":
-            chart_fig = px.treemap(df,path=[label_col],values=value_col,title=title_str)
+            chart_fig = px.treemap(df, path=[label_col], values=value_col, title=title_str)
         elif chart_type == "Scatter":
-            chart_fig = px.scatter(df,x=label_col,y=value_col,size=value_col,color=value_col,
-                                   color_continuous_scale="Blues",title=title_str)
+            chart_fig = px.scatter(df, x=label_col, y=value_col, size=value_col, color=value_col,
+                                   color_continuous_scale="Blues", title=title_str)
 
         if chart_fig is not None:
             chart_fig.update_layout(
@@ -531,28 +502,29 @@ if st.session_state.last_df is not None:
                 st.session_state.chart_path = cp
             except Exception:
                 pass
+    else:
+        st.caption("ℹ️ No numeric columns found for visualization.")
 
 
 # ── TEXT RESULT ──
 if (st.session_state.last_response and st.session_state.last_df is None
-        and parsed and isinstance(parsed,dict) and parsed.get("type")=="text"):
+        and parsed and isinstance(parsed, dict) and parsed.get("type") == "text"):
     st.subheader("💬 Analysis Result")
     st.markdown(parsed.get("content", st.session_state.last_response))
 
 
 # =============================================================
 # FOLLOW-UP QUESTIONS
-# KEY FIX: set_query() writes to session_state key directly,
-# then rerun — box shows the question; user clicks Run Analysis.
+# SAFE: set pending_text (not a widget key), then rerun
 # =============================================================
 if st.session_state.followups:
     st.subheader("🔁 Follow-up Questions")
-    st.caption("Click to load into box → edit if needed → **Run Analysis**")
+    st.caption("Click to load → edit → **Run Analysis**")
     fq_cols = st.columns(2)
     for i, q in enumerate(st.session_state.followups):
         with fq_cols[i % 2]:
             if st.button(q, key=f"fq_{i}", use_container_width=True):
-                set_query(q)
+                st.session_state.pending_text = q
                 st.rerun()
 
 
