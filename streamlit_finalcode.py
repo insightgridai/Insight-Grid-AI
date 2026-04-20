@@ -1,396 +1,449 @@
+# =============================================================
+# streamlit_app.py  —  Insight Grid AI  FINAL
+# =============================================================
+
+import json
 import streamlit as st
 import pandas as pd
-import json
 import plotly.express as px
-from fpdf import FPDF
-from langchain_core.messages import HumanMessage
-import base64
+from langchain_core.messages import AIMessage, HumanMessage
 
 from agents.supervisor_agent import get_supervisor_app
-from agents.followup_agent import get_followup_questions
-from db.connection import get_db_connection_dynamic
+from agents.followup_agent   import get_followup_questions
+from db.connection           import test_connection
+from utils.db_store          import load_connections, save_connection
+from utils.pdf_export        import create_pdf
+from utils.cache             import load_bg
 
 
-# -------------------------------------------------
-# PAGE CONFIG
-# -------------------------------------------------
-st.set_page_config(
-    page_title="Insight Grid AI",
-    layout="wide"
-)
+# ── Page config ────────────────────────────────────────────
+st.set_page_config(page_title="Insight Grid AI", page_icon="🤖", layout="wide")
 
 
-# -------------------------------------------------
-# BACKGROUND IMAGE
-# Save image in: assets/background.png
-# -------------------------------------------------
-def get_base64_image(image_path):
-    with open(image_path, "rb") as img:
-        return base64.b64encode(img.read()).decode()
-
-bg_img = get_base64_image("assets/backgroud6.jfif")
-
-st.markdown(
-    f"""
-    <style>
+# ── Background ─────────────────────────────────────────────
+try:
+    bg = load_bg("assets/backgroud6.jfif")
+    bg_css = f"""
     .stApp {{
-        background:
-            linear-gradient(
-                rgba(0,0,0,0.65),
-                rgba(0,0,0,0.65)
-            ),
-            url("data:image/png;base64,{bg_img}");
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
-    }}
-
-    .block-container {{
-        padding-top: 2rem;
-    }}
-
-    div[data-testid="stButton"] button {{
-        border-radius: 10px;
-    }}
-
-    textarea {{
-        background-color: rgba(255,255,255,0.06) !important;
-        color: white !important;
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+        background: linear-gradient(rgba(0,0,0,0.72),rgba(0,0,0,0.72)),
+                    url("data:image/png;base64,{bg}");
+        background-size:cover; background-position:center; background-attachment:fixed;
+    }}"""
+except Exception:
+    bg_css = ".stApp{background:#0e0e1a;}"
 
 
-# -------------------------------------------------
-# HEADER
-# -------------------------------------------------
-st.title("🤖 Insight Grid AI")
-st.caption("Where Data, Agents and Decisions Connect")
+# ── CSS ────────────────────────────────────────────────────
+st.markdown(f"""
+<style>
+{bg_css}
+textarea, input[type="text"], input[type="password"] {{
+    background-color:rgba(255,255,255,0.07)!important;
+    color:white!important; border-radius:8px!important;
+}}
+div[data-testid="stButton"] button {{ border-radius:10px; }}
+div[data-testid="stButton"] button[kind="primary"] {{
+    background:linear-gradient(135deg,#00b4d8,#0077b6)!important;
+    border:none!important; color:white!important; font-weight:600!important;
+}}
+.kpi-card {{
+    background:rgba(0,100,140,0.45); border:1px solid rgba(0,180,216,0.45);
+    border-radius:12px; padding:16px 10px; text-align:center; min-height:86px;
+}}
+.kpi-value {{ font-size:1.5rem; font-weight:700; color:#48cae4; margin-bottom:4px; }}
+.kpi-label {{ font-size:0.78rem; color:#90e0ef; }}
+div[data-testid="stButton"] button[kind="secondary"] {{
+    background:rgba(0,119,182,0.18)!important;
+    border:1px solid rgba(0,180,216,0.45)!important;
+    color:#90e0ef!important; width:100%; text-align:left;
+}}
+section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
+    background:rgba(0,100,140,0.3)!important;
+    border:1px solid rgba(0,180,216,0.3)!important;
+    color:#90e0ef!important; text-align:left; width:100%;
+}}
+</style>
+""", unsafe_allow_html=True)
 
 
-# -------------------------------------------------
-# SESSION STATE
-# -------------------------------------------------
-defaults = {
-    "db_connected": False,
-    "db_config": {},
-    "last_df": None,
-    "last_response": "",
-    "followups": [],
-    "chart_df": None,
-    "query_text": "",
-    "pending_query": "",
-    "auto_run": False
+# ── Session state ──────────────────────────────────────────
+_defaults = {
+    "db_connected":   False,
+    "db_config":      {},
+    "memory_on":      True,
+    "history":        [],
+    "history_pairs":  [],
+    "last_response":  "",
+    "last_df":        None,       # display df  (original strings)
+    "chart_df":       None,       # numeric df  (for charts)
+    "last_parsed":    None,
+    "followups":      [],
+    "show_popup":     False,
+    "chart_path":     None,
+    "last_run_query": "",
+    "pending_text":   "",
 }
-
-for k, v in defaults.items():
+for k, v in _defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
 
-# -------------------------------------------------
-# PARSE RESPONSE
-# -------------------------------------------------
-def parse_response(response):
+# ── Parse helper ───────────────────────────────────────────
+def parse_response(text: str):
     try:
-        start = response.find("{")
-        end = response.rfind("}") + 1
-        return json.loads(response[start:end])
-    except:
+        s = text.find("{"); e = text.rfind("}") + 1
+        return json.loads(text[s:e])
+    except Exception:
         return None
 
 
-# -------------------------------------------------
-# DB POPUP
-# -------------------------------------------------
-@st.dialog("Connect to PostgreSQL Database")
-def db_popup():
-
-    host = st.text_input("Host")
-    port = st.text_input("Port", value="5432")
-    db = st.text_input("Database")
-    user = st.text_input("Username")
-    pwd = st.text_input("Password", type="password")
-
-    if st.button("Connect Now"):
-
-        try:
-            config = {
-                "host": host,
-                "port": port,
-                "database": db,
-                "user": user,
-                "password": pwd
-            }
-
-            conn = get_db_connection_dynamic(config)
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.close()
-            conn.close()
-
-            st.session_state.db_connected = True
-            st.session_state.db_config = config
-
-            st.rerun()
-
-        except Exception as e:
-            st.error(str(e))
+# ── Numeric coercion helper ────────────────────────────────
+def make_chart_df(raw_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return a copy where every column that can be numeric IS numeric.
+    Handles comma-formatted numbers like "2,110,527" -> 2110527.
+    """
+    df = raw_df.copy()
+    for col in df.columns:
+        cleaned = (
+            df[col].astype(str)
+            .str.replace(",", "", regex=False)
+            .str.replace("$", "", regex=False)
+            .str.replace("%", "", regex=False)
+            .str.strip()
+        )
+        coerced = pd.to_numeric(cleaned, errors="coerce")
+        # Apply if at least one value converted successfully
+        if coerced.notna().any():
+            df[col] = coerced
+    return df
 
 
-# -------------------------------------------------
-# TOP BAR
-# -------------------------------------------------
-c1, c2 = st.columns([8, 2])
+# ── Header ─────────────────────────────────────────────────
+st.title("🤖 Insight Grid AI")
+st.caption("Where Data, Agents and Decisions Connect")
 
+
+# ── Top bar ────────────────────────────────────────────────
+c1, c2, c3 = st.columns([3, 3, 2])
+with c1:
+    st.toggle("🧠 Memory Mode", key="memory_on")
 with c2:
-    if st.button("🔌 Connect DB"):
-        db_popup()
-
-if st.session_state.db_connected:
-    st.success("Connected ✅")
-else:
-    st.warning("Not Connected")
-
-
-# -------------------------------------------------
-# APPLY FOLLOWUP
-# -------------------------------------------------
-if st.session_state.pending_query:
-    st.session_state.query_text = st.session_state.pending_query
-    st.session_state.pending_query = ""
-
-
-# -------------------------------------------------
-# QUERY BOX
-# -------------------------------------------------
-query = st.text_area(
-    "Ask your business question",
-    height=120,
-    key="query_text",
-    placeholder="Show top 10 customers for latest year"
-)
-
-run = st.button("🚀 Run Analysis")
-
-
-# -------------------------------------------------
-# VISUALS
-# -------------------------------------------------
-def show_visual(df):
-
-    num_cols = df.select_dtypes(include="number").columns
-
-    if len(num_cols) == 0:
-        return None
-
-    value_col = num_cols[-1]
-    label_col = [c for c in df.columns if c != value_col][0]
-
-    chart = st.selectbox(
-        "Choose Visual",
-        ["Bar", "Line", "Pie", "Treemap"],
-        key="chart_selector"
-    )
-
-    if chart == "Bar":
-        fig = px.bar(df, x=label_col, y=value_col)
-
-    elif chart == "Line":
-        fig = px.line(df, x=label_col, y=value_col)
-
-    elif chart == "Pie":
-        fig = px.pie(df, names=label_col, values=value_col)
-
+    if st.session_state.db_connected:
+        name  = st.session_state.db_config.get("name", "")
+        dbt   = st.session_state.db_config.get("db_type", "postgresql").upper()
+        st.success(f"✅ {name} ({dbt})" if name else f"✅ Connected ({dbt})")
     else:
-        fig = px.treemap(df, path=[label_col], values=value_col)
-
-    st.plotly_chart(fig, use_container_width=True)
-    return fig
-
-
-# -------------------------------------------------
-# RUN QUERY
-# -------------------------------------------------
-should_run = run or st.session_state.auto_run
-
-if should_run:
-
-    st.session_state.auto_run = False
-
-    if not st.session_state.db_connected:
-        st.error("Please connect database first.")
-        st.stop()
-
-    with st.spinner("Running AI Agents..."):
-
-        app = get_supervisor_app(
-            st.session_state.db_config
-        )
-
-        result = app.invoke({
-            "messages": [
-                HumanMessage(content=st.session_state.query_text)
-            ],
-            "step": 0
-        })
-
-        final_text = ""
-
-        for msg in reversed(result["messages"]):
-            if getattr(msg, "type", "") == "ai":
-                final_text = msg.content
-                break
-
-        st.session_state.last_response = final_text
-
-        parsed = parse_response(final_text)
-
-        if parsed:
-
-            if parsed["type"] == "table":
-
-                df = pd.DataFrame(
-                    parsed["data"],
-                    columns=parsed["columns"]
-                )
-
-                st.session_state.last_df = df
-                st.session_state.chart_df = df
-
-            elif parsed["type"] == "text":
-
-                st.session_state.last_df = None
-                st.session_state.chart_df = None
-
-        st.session_state.followups = get_followup_questions(
-            st.session_state.query_text
-        )
+        st.warning("⚠️ Not Connected")
+with c3:
+    if st.button("🔌 Connect Database", use_container_width=True):
+        st.session_state.show_popup = True
 
 
-# -------------------------------------------------
-# RESULT TABLE
-# -------------------------------------------------
-if st.session_state.last_df is not None:
+# ── DB Popup ───────────────────────────────────────────────
+@st.dialog("Connect to Database", width="large")
+def db_popup():
+    tab1, tab2 = st.tabs(["✏️ Manual Entry", "💾 Saved Connections"])
 
-    st.subheader("📊 Result")
+    with tab1:
+        conn_name = st.text_input("Connection Name", key="p_name")
+        db_type   = st.selectbox("Type", ["postgresql","snowflake"], key="p_db_type",
+                      format_func=lambda x: "PostgreSQL" if x=="postgresql" else "Snowflake")
+        if db_type == "postgresql":
+            host=st.text_input("Host",key="p_host"); port=st.text_input("Port",key="p_port",value="5432")
+            database=st.text_input("Database",key="p_database"); user=st.text_input("Username",key="p_user")
+            password=st.text_input("Password",key="p_password",type="password")
+            cfg={"name":conn_name,"db_type":"postgresql","host":host,"port":port,
+                 "database":database,"user":user,"password":password}
+        else:
+            account=st.text_input("Account",key="p_account",value="dbcitil-nc64603")
+            user=st.text_input("Username",key="p_sf_user"); password=st.text_input("Password",key="p_sf_pwd",type="password")
+            warehouse=st.text_input("Warehouse",key="p_warehouse",value="COMPUTE_WH")
+            database=st.text_input("Database",key="p_sf_db"); schema=st.text_input("Schema",key="p_schema",value="PUBLIC")
+            role=st.text_input("Role",key="p_role")
+            cfg={"name":conn_name,"db_type":"snowflake","account":account,"user":user,
+                 "password":password,"warehouse":warehouse,"database":database,"schema":schema,"role":role}
+        col1,col2=st.columns(2)
+        with col1:
+            if st.button("⚡ Connect Now", use_container_width=True):
+                ok,msg=test_connection(cfg)
+                if ok:
+                    st.session_state.db_connected=True; st.session_state.db_config=cfg
+                    st.session_state.show_popup=False; st.rerun()
+                else: st.error(msg)
+        with col2:
+            if st.button("💾 Save", use_container_width=True):
+                if conn_name.strip(): save_connection(cfg); st.success("Saved!")
+                else: st.warning("Enter a name first.")
 
-    st.dataframe(
-        st.session_state.last_df,
-        use_container_width=True
-    )
+    with tab2:
+        saved = load_connections()
+        if not saved: st.info("No saved connections.")
+        else:
+            names=[x["name"] for x in saved]; sel=st.selectbox("Select",names,key="p_sel")
+            row=next(x for x in saved if x["name"]==sel)
+            for k,v in row.items():
+                if k not in ("password","name"): st.markdown(f"**{k}:** `{v}`")
+            if st.button("✅ Use This Connection", use_container_width=True):
+                ok,msg=test_connection(row)
+                if ok:
+                    st.session_state.db_connected=True; st.session_state.db_config=row
+                    st.session_state.show_popup=False; st.rerun()
+                else: st.error(msg)
+
+if st.session_state.show_popup:
+    db_popup()
 
 
-# -------------------------------------------------
-# VISUAL CHART
-# -------------------------------------------------
-fig = None
-
-if st.session_state.chart_df is not None:
-
-    st.subheader("📈 Interactive Visual")
-
-    fig = show_visual(
-        st.session_state.chart_df
-    )
-
-
-# -------------------------------------------------
-# FOLLOWUP QUESTIONS
-# -------------------------------------------------
-if st.session_state.followups:
-
-    st.subheader("💡 Follow-up Questions")
-
-    for i, q in enumerate(st.session_state.followups):
-
-        if st.button(q, key=f"fq_{i}"):
-
-            st.session_state.pending_query = q
-            st.session_state.auto_run = True
+# ── Sidebar ────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("### 💡 Suggested Questions")
+    st.caption("Click → edit → Run Analysis")
+    for i, s in enumerate([
+        "Show top 10 customers by total revenue",
+        "Monthly revenue trend for latest year",
+        "Which product category has highest sales?",
+        "Show bottom 5 performing products",
+        "Average order value by region",
+        "Compare revenue this year vs last year",
+        "Customers who haven't ordered in 90 days",
+        "Total revenue by month for all years",
+    ]):
+        if st.button(s, key=f"sug_{i}", use_container_width=True):
+            st.session_state.pending_text = s
             st.rerun()
 
+    st.divider()
+    st.markdown("### 🗄️ Active Connection")
+    if st.session_state.db_connected:
+        cfg=st.session_state.db_config
+        st.success(f"**{cfg.get('name','—')}**\n\n`{cfg.get('db_type','').upper()}`")
+        if st.button("🔌 Disconnect", use_container_width=True):
+            st.session_state.db_connected=False; st.session_state.db_config={}; st.rerun()
+    else:
+        st.warning("No database connected")
 
-# -------------------------------------------------
-# PDF EXPORT
-# -------------------------------------------------
-if st.session_state.last_response:
+    if st.session_state.memory_on and st.session_state.history_pairs:
+        st.divider()
+        st.markdown("### 🧠 Conversation History")
+        pairs=st.session_state.history_pairs
+        st.caption(f"{len(pairs)} exchange(s)")
+        for idx,pair in enumerate(reversed(pairs)):
+            ri=len(pairs)-1-idx
+            label=pair['q'][:50]+("…" if len(pair['q'])>50 else "")
+            with st.expander(f"#{ri+1} — {label}"):
+                st.markdown(f"**You:** {pair['q']}")
+                st.markdown(f"**Result:** {pair['a']}")
+                if st.button("↩ Re-load", key=f"hist_{ri}", use_container_width=True):
+                    st.session_state.pending_text=pair['q']; st.rerun()
+        if st.button("🗑️ Clear History", use_container_width=True):
+            st.session_state.history=[]; st.session_state.history_pairs=[]; st.rerun()
 
-    parsed = parse_response(
-        st.session_state.last_response
-    )
 
-    if parsed:
+# ── Query box ──────────────────────────────────────────────
+# value= is safe here because we do NOT use key=
+query = st.text_area(
+    "💬 Ask your business question",
+    height=110,
+    value=st.session_state.pending_text,
+    placeholder="e.g. Show top 10 customers by total revenue",
+)
+run_clicked = st.button("🚀 Run Analysis", type="primary")
 
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_auto_page_break(True, 15)
 
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(0, 10, "Insight Grid AI Report", ln=True)
+# ── Run Analysis ───────────────────────────────────────────
+if run_clicked:
+    st.session_state.show_popup = False
+    active_query = query.strip()
 
-        pdf.ln(5)
+    if not active_query:
+        st.warning("⚠️ Please enter a question."); st.stop()
+    if not st.session_state.db_connected:
+        st.error("❌ Connect to a database first."); st.stop()
 
-        pdf.set_font("Arial", "", 11)
-        pdf.multi_cell(
-            0,
-            8,
-            f"Query: {st.session_state.query_text}"
+    # Build messages
+    if st.session_state.memory_on and st.session_state.history:
+        messages = st.session_state.history[-6:] + [HumanMessage(content=active_query)]
+    else:
+        messages = [HumanMessage(content=active_query)]
+
+    app = get_supervisor_app(st.session_state.db_config)
+    with st.spinner("🤖 Running Agents… (Analyst → Expert → Reviewer)"):
+        result = app.invoke({"messages": messages, "step": 0})
+
+    final = ""
+    for msg in reversed(result["messages"]):
+        if getattr(msg, "type", "") == "ai":
+            final = msg.content; break
+
+    st.session_state.last_response  = final
+    st.session_state.last_run_query = active_query
+    st.session_state.chart_path     = None
+    st.session_state.pending_text   = active_query
+
+    parsed = parse_response(final)
+    st.session_state.last_parsed = parsed
+
+    if parsed and parsed.get("type") == "table":
+        # Build display df
+        raw_df = pd.DataFrame(parsed.get("data",[]), columns=parsed.get("columns",[]))
+        st.session_state.last_df  = raw_df
+        # Build chart df — force numeric on all possible columns
+        st.session_state.chart_df = make_chart_df(raw_df)
+    else:
+        st.session_state.last_df  = None
+        st.session_state.chart_df = None
+
+    st.session_state.followups = get_followup_questions(active_query)
+
+    if st.session_state.memory_on:
+        st.session_state.history.append(HumanMessage(content=active_query))
+        st.session_state.history.append(AIMessage(content=final))
+        if len(st.session_state.history) > 20:
+            st.session_state.history = st.session_state.history[-20:]
+        a_text = ""
+        if parsed:
+            if parsed.get("type") == "text":
+                a_text = parsed.get("content",final)[:200]
+            else:
+                cols=parsed.get("columns",[]); rows=parsed.get("data",[])
+                a_text=f"{len(rows)} rows, cols: {', '.join(cols[:4])}"
+        st.session_state.history_pairs.append({"q":active_query,"a":a_text})
+        if len(st.session_state.history_pairs)>10:
+            st.session_state.history_pairs=st.session_state.history_pairs[-10:]
+
+
+# ── KPI Cards ──────────────────────────────────────────────
+parsed = st.session_state.last_parsed
+if parsed and isinstance(parsed, dict):
+    kpis = parsed.get("kpis", [])
+    if kpis:
+        st.subheader("📌 Key Metrics")
+        cols = st.columns(len(kpis))
+        for i, kpi in enumerate(kpis):
+            with cols[i]:
+                st.markdown(
+                    f'<div class="kpi-card">'
+                    f'<div class="kpi-value">{kpi.get("value","—")}</div>'
+                    f'<div class="kpi-label">{kpi.get("label","")}</div>'
+                    f'</div>', unsafe_allow_html=True)
+        st.markdown("")
+
+if parsed and isinstance(parsed, dict) and parsed.get("summary"):
+    st.info(f"💡 {parsed['summary']}")
+
+
+# ── Data table ─────────────────────────────────────────────
+if st.session_state.last_df is not None:
+    st.subheader("📊 Structured Result")
+    st.dataframe(st.session_state.last_df, use_container_width=True)
+
+
+# ── Visualization ──────────────────────────────────────────
+# Uses chart_df where all possible columns are already numeric.
+# Falls back to trying every column even if coercion is imperfect.
+if st.session_state.chart_df is not None:
+    cdf      = st.session_state.chart_df
+    num_cols = cdf.select_dtypes(include="number").columns.tolist()
+    all_cols = cdf.columns.tolist()
+
+    # If still no numeric cols detected, force-convert the last column
+    if not num_cols and len(all_cols) >= 1:
+        last_col = all_cols[-1]
+        cdf[last_col] = pd.to_numeric(
+            cdf[last_col].astype(str).str.replace(",","",regex=False).str.strip(),
+            errors="coerce"
         )
+        st.session_state.chart_df = cdf
+        num_cols = cdf.select_dtypes(include="number").columns.tolist()
 
-        pdf.ln(5)
+    if num_cols:
+        st.subheader("📈 Interactive Visualization")
+        vc1, vc2, vc3 = st.columns(3)
 
-        if parsed["type"] == "table":
-
-            columns = parsed["columns"]
-            data = parsed["data"]
-
-            col_width = 190 / len(columns)
-
-            pdf.set_font("Arial", "B", 10)
-
-            for col in columns:
-                pdf.cell(col_width, 8, str(col), border=1)
-
-            pdf.ln()
-
-            pdf.set_font("Arial", "", 9)
-
-            for row in data:
-                for item in row:
-                    pdf.cell(
-                        col_width,
-                        8,
-                        str(item)[:22],
-                        border=1
-                    )
-                pdf.ln()
-
-            if fig:
-                try:
-                    fig.write_image("chart.png")
-                    pdf.ln(8)
-                    pdf.image("chart.png", x=10, w=190)
-                except:
-                    pass
-
-        elif parsed["type"] == "text":
-
-            pdf.multi_cell(
-                0,
-                8,
-                parsed["content"]
+        with vc1:
+            chart_type = st.selectbox(
+                "Chart Type",
+                ["Bar","Horizontal Bar","Line","Area","Pie","Donut","Treemap","Scatter"],
+                key="viz_chart_type"
             )
+        with vc2:
+            val_col = st.selectbox("Value (metric)", num_cols,
+                                   index=len(num_cols)-1, key="viz_value_col")
+        with vc3:
+            lbl_options = [c for c in all_cols if c != val_col] or all_cols
+            lbl_col = st.selectbox("Label / Group", lbl_options, key="viz_label_col")
 
-        pdf.output("report.pdf")
+        title = f"{val_col} by {lbl_col}"
+        fig = None
 
-        with open("report.pdf", "rb") as f:
+        if   chart_type == "Bar":
+            fig = px.bar(cdf, x=lbl_col, y=val_col, color=val_col,
+                         color_continuous_scale="Blues", title=title, text_auto=True)
+        elif chart_type == "Horizontal Bar":
+            fig = px.bar(cdf, x=val_col, y=lbl_col, orientation="h", color=val_col,
+                         color_continuous_scale="Teal", title=title, text_auto=True)
+        elif chart_type == "Line":
+            fig = px.line(cdf, x=lbl_col, y=val_col, markers=True, title=title)
+        elif chart_type == "Area":
+            fig = px.area(cdf, x=lbl_col, y=val_col, title=title)
+        elif chart_type == "Pie":
+            fig = px.pie(cdf, names=lbl_col, values=val_col, title=title)
+        elif chart_type == "Donut":
+            fig = px.pie(cdf, names=lbl_col, values=val_col, hole=0.45, title=title)
+        elif chart_type == "Treemap":
+            fig = px.treemap(cdf, path=[lbl_col], values=val_col, title=title)
+        elif chart_type == "Scatter":
+            fig = px.scatter(cdf, x=lbl_col, y=val_col, color=val_col,
+                             color_continuous_scale="Blues", title=title)
 
-            st.download_button(
-                "📄 Download Report",
-                data=f,
-                file_name="Insight_Report.pdf",
-                mime="application/pdf"
+        if fig:
+            fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(10,10,30,0.6)",
+                font_color="white", title_font_color="#48cae4",
+                legend=dict(bgcolor="rgba(0,0,0,0)"),
+                margin=dict(l=20,r=20,t=50,b=20),
             )
+            fig.update_xaxes(gridcolor="rgba(255,255,255,0.08)")
+            fig.update_yaxes(gridcolor="rgba(255,255,255,0.08)")
+            st.plotly_chart(fig, use_container_width=True)
+            try:
+                fig.write_image("chart_export.png")
+                st.session_state.chart_path = "chart_export.png"
+            except Exception:
+                pass
+    else:
+        st.info("ℹ️ No numeric data available for chart.")
+
+
+# ── Text result ────────────────────────────────────────────
+if (st.session_state.last_response and st.session_state.last_df is None
+        and parsed and parsed.get("type") == "text"):
+    st.subheader("💬 Analysis Result")
+    st.markdown(parsed.get("content", st.session_state.last_response))
+
+
+# ── Follow-up questions ────────────────────────────────────
+if st.session_state.followups:
+    st.subheader("🔁 Follow-up Questions")
+    st.caption("Click to load → edit → **Run Analysis**")
+    fcols = st.columns(2)
+    for i, q in enumerate(st.session_state.followups):
+        with fcols[i % 2]:
+            if st.button(q, key=f"fq_{i}", use_container_width=True):
+                st.session_state.pending_text = q
+                st.rerun()
+
+
+# ── PDF download ───────────────────────────────────────────
+if st.session_state.last_response and st.session_state.last_parsed:
+    p = st.session_state.last_parsed
+    if p.get("type") in ("table","text"):
+        try:
+            pdf_file = create_pdf(p, st.session_state.last_run_query or "",
+                                  chart_path=st.session_state.get("chart_path"))
+            with open(pdf_file,"rb") as f:
+                st.download_button("📄 Download Report (PDF)", data=f,
+                                   file_name="Insight_Report.pdf", mime="application/pdf")
+        except Exception as e:
+            st.caption(f"PDF note: {e}")
