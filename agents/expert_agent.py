@@ -1,3 +1,8 @@
+# =============================================================
+# agents/expert_agent.py
+# SQL Expert — supports PostgreSQL and Snowflake
+# =============================================================
+
 from typing import TypedDict, Annotated
 
 from langgraph.graph import StateGraph, START
@@ -21,67 +26,60 @@ class ExpertState(TypedDict):
 # ---------------------------------------------------
 # MAIN APP
 # ---------------------------------------------------
-def get_expert_app(db_config):
+def get_expert_app(db_config: dict):
 
-    llm = ChatOpenAI(model="gpt-5-nano")
+    # gpt-4o-mini: good balance of cost + SQL quality
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-    get_schema = get_schema_tool(db_config)
+    get_schema  = get_schema_tool(db_config)
     execute_sql = get_execute_sql_tool(db_config)
 
-    tools = [
-        get_schema,
-        execute_sql
-    ]
-
+    tools    = [get_schema, execute_sql]
     tool_llm = llm.bind_tools(tools)
 
-    system_prompt = """
-You are a PostgreSQL senior SQL expert.
+    db_type = db_config.get("db_type", "postgresql").lower()
 
-RULES:
-1. Always inspect schema first.
-2. Then generate correct SQL.
-3. Then execute SQL.
-4. Return tool result only.
-5. No explanations.
-
-Use PostgreSQL syntax.
-Use LIMIT when needed.
-Use latest year dynamically if requested.
+    if db_type == "snowflake":
+        sql_dialect = "Snowflake SQL"
+        extra_rules = """
+- Use LIMIT for large tables.
+- Use TO_DATE / DATEADD / DATE_TRUNC for date logic.
+- Schema is usually PUBLIC unless specified.
+- Use CURRENT_DATE() for today's date.
+- Column names are UPPERCASE in Snowflake by default.
+"""
+    else:
+        sql_dialect = "PostgreSQL"
+        extra_rules = """
+- Use LIMIT for large results.
+- Use DATE_TRUNC / EXTRACT for date logic.
+- Use NOW() or CURRENT_DATE for today's date.
+- Use lowercase table/column names.
 """
 
-    system_message = [
-        SystemMessage(content=system_prompt)
-    ]
+    system_prompt = f"""
+You are a senior {sql_dialect} expert embedded in a multi-agent analytics system.
 
+RULES:
+1. Always call get_schema first to inspect available tables and columns.
+2. Write correct, optimised {sql_dialect} based on the schema.
+3. Execute the SQL with execute_sql.
+4. Return ONLY the raw tool result — no commentary, no markdown.
+5. Never guess column names; always verify via schema first.
+{extra_rules}
+"""
+
+    system_message = [SystemMessage(content=system_prompt)]
 
     def expert(state: ExpertState):
-
-        response = tool_llm.invoke(
-            system_message + state["messages"]
-        )
-
-        return {
-            "messages": [response]
-        }
-
+        response = tool_llm.invoke(system_message + state["messages"])
+        return {"messages": [response]}
 
     graph = StateGraph(ExpertState)
-
     graph.add_node("expert", expert)
-
-    graph.add_node(
-        "tools",
-        ToolNode(tools)
-    )
-
+    graph.add_node("tools", ToolNode(tools))
     graph.add_edge(START, "expert")
-
-    graph.add_conditional_edges(
-        "expert",
-        tools_condition
-    )
-
+    graph.add_conditional_edges("expert", tools_condition)
     graph.add_edge("tools", "expert")
 
     return graph.compile()
