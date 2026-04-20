@@ -1,7 +1,8 @@
 # =============================================================
 # utils/pdf_export.py
-# White background, dark text — readable on paper
-# _safe() strips all unicode outside latin-1 range
+# FIX 1: White background, dark text — readable on paper
+# FIX 2: _safe() strips all unicode outside latin-1 range
+#         (fixes "\u2014 can't encode" crash)
 # =============================================================
 
 import os
@@ -30,13 +31,13 @@ def _safe(text) -> str:
 class InsightPDF(FPDF):
 
     def header(self):
-        self.set_fill_color(0, 77, 128)
+        self.set_fill_color(0, 77, 128)          # dark blue band
         self.rect(0, 0, 210, 18, "F")
         self.set_font("Arial", "B", 13)
         self.set_text_color(255, 255, 255)
         self.set_y(4)
         self.cell(0, 10, "Insight Grid AI -- Analytics Report", ln=True, align="C")
-        self.set_text_color(0, 0, 0)
+        self.set_text_color(0, 0, 0)             # reset to black for body
         self.ln(4)
 
     def footer(self):
@@ -60,7 +61,7 @@ def create_pdf(parsed: dict, query: str, chart_path: str = None) -> str:
     pdf.set_font("Arial", "", 10)
     pdf.set_text_color(40, 40, 40)
     pdf.set_fill_color(235, 245, 255)
-    pdf.multi_cell(0, 7, _safe(query or "-"), fill=True)
+    pdf.multi_cell(0, 7, _safe(query or "—"), fill=True)
     pdf.ln(4)
 
     # ── Summary ────────────────────────────────────────────
@@ -82,15 +83,17 @@ def create_pdf(parsed: dict, query: str, chart_path: str = None) -> str:
         pdf.cell(0, 8, "Key Performance Indicators", ln=True)
         pdf.ln(2)
 
-        kpi_w = min(185 / len(kpis), 46)
+        kpi_w  = min(185 / len(kpis), 46)
+        # Value row
         pdf.set_font("Arial", "B", 11)
-        for kpi in kpis:
+        for i, kpi in enumerate(kpis):
             pdf.set_fill_color(0, 119, 182)
             pdf.set_text_color(255, 255, 255)
             pdf.cell(kpi_w, 10, _safe(str(kpi.get("value",""))), border=1, fill=True, align="C")
         pdf.ln()
+        # Label row
         pdf.set_font("Arial", "", 8)
-        for kpi in kpis:
+        for i, kpi in enumerate(kpis):
             pdf.set_fill_color(220, 235, 248)
             pdf.set_text_color(40, 40, 40)
             pdf.cell(kpi_w, 6, _safe(str(kpi.get("label",""))), border=1, fill=True, align="C")
@@ -108,6 +111,7 @@ def create_pdf(parsed: dict, query: str, chart_path: str = None) -> str:
 
             col_w = min(185 / len(columns), 55)
 
+            # Header row
             pdf.set_fill_color(0, 77, 128)
             pdf.set_text_color(255, 255, 255)
             pdf.set_font("Arial", "B", 9)
@@ -115,6 +119,7 @@ def create_pdf(parsed: dict, query: str, chart_path: str = None) -> str:
                 pdf.cell(col_w, 8, _safe(str(col))[:20], border=1, fill=True, align="C")
             pdf.ln()
 
+            # Data rows — alternating light blue / white
             pdf.set_font("Arial", "", 8)
             for idx, row in enumerate(data):
                 if idx % 2 == 0:
@@ -143,6 +148,7 @@ def create_pdf(parsed: dict, query: str, chart_path: str = None) -> str:
         pdf.set_text_color(0, 77, 128)
         pdf.cell(0, 8, "Visualization", ln=True)
         pdf.ln(2)
+        # Make sure chart fits on page
         if pdf.get_y() > 220:
             pdf.add_page()
         pdf.image(chart_path, x=10, w=185)
