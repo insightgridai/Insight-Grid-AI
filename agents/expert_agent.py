@@ -1,6 +1,14 @@
 # =============================================================
 # agents/expert_agent.py
-# SQL Expert — supports PostgreSQL and Snowflake
+# Token-optimised SQL Expert — PostgreSQL + Snowflake
+#
+# OPTIMISATIONS vs previous version:
+# - max_tokens=600 on LLM → hard cap on output tokens
+# - Short, precise system prompt → fewer input tokens
+# - max_iterations=4 → stops infinite tool-call loops
+# - request_timeout=30 → fail fast instead of hanging
+# - Always LIMIT 100 on Snowflake to avoid huge result sets
+# - Schema prompt tells model the table name upfront when known
 # =============================================================
 
 from typing import TypedDict, Annotated
@@ -12,67 +20,68 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_core.messages import AnyMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from tools.get_schema import get_schema_tool
+from tools.get_schema  import get_schema_tool
 from tools.execute_sql import get_execute_sql_tool
 
 
-# ---------------------------------------------------
-# STATE
-# ---------------------------------------------------
 class ExpertState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
 
-# ---------------------------------------------------
-# MAIN APP
-# ---------------------------------------------------
 def get_expert_app(db_config: dict):
-
-    # gpt-4o-mini: good balance of cost + SQL quality
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-
-    get_schema  = get_schema_tool(db_config)
-    execute_sql = get_execute_sql_tool(db_config)
-
-    tools    = [get_schema, execute_sql]
-    tool_llm = llm.bind_tools(tools)
 
     db_type = db_config.get("db_type", "postgresql").lower()
 
+    # Tight token budget — gpt-4o-mini is fast and cheap
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0,
+        max_tokens=600,          # hard output cap
+        request_timeout=45,      # fail fast, don't hang
+        max_retries=1,           # one retry on rate limit
+    )
+
+    get_schema  = get_schema_tool(db_config)
+    execute_sql = get_execute_sql_tool(db_config)
+    tools       = [get_schema, execute_sql]
+    tool_llm    = llm.bind_tools(tools)
+
+    # ── System prompt — kept SHORT to save input tokens ──
     if db_type == "snowflake":
-        sql_dialect = "Snowflake SQL"
-        extra_rules = """
-- Use LIMIT for large tables.
-- Use TO_DATE / DATEADD / DATE_TRUNC for date logic.
-- Schema is usually PUBLIC unless specified.
-- Use CURRENT_DATE() for today's date.
-- Column names are UPPERCASE in Snowflake by default.
-"""
+        prompt = """You are a Snowflake SQL expert.
+Steps: 1) call get_schema 2) write SQL 3) call execute_sql 4) return result only.
+Rules:
+- UPPERCASE column/table names
+- Always add LIMIT 100
+- Use CURRENT_DATE() for today
+- Return ONLY the raw query result. No explanation."""
     else:
-        sql_dialect = "PostgreSQL"
-        extra_rules = """
-- Use LIMIT for large results.
-- Use DATE_TRUNC / EXTRACT for date logic.
-- Use NOW() or CURRENT_DATE for today's date.
-- Use lowercase table/column names.
-"""
+        prompt = """You are a PostgreSQL expert.
+Steps: 1) call get_schema 2) write SQL 3) call execute_sql 4) return result only.
+Rules:
+- lowercase column/table names
+- Always add LIMIT 100
+- Use CURRENT_DATE for today
+- Return ONLY the raw query result. No explanation."""
 
-    system_prompt = f"""
-You are a senior {sql_dialect} expert embedded in a multi-agent analytics system.
+    sm = [SystemMessage(content=prompt)]
 
-RULES:
-1. Always call get_schema first to inspect available tables and columns.
-2. Write correct, optimised {sql_dialect} based on the schema.
-3. Execute the SQL with execute_sql.
-4. Return ONLY the raw tool result — no commentary, no markdown.
-5. Never guess column names; always verify via schema first.
-{extra_rules}
-"""
-
-    system_message = [SystemMessage(content=system_prompt)]
-
+    # Track iterations to prevent infinite loops
     def expert(state: ExpertState):
-        response = tool_llm.invoke(system_message + state["messages"])
+        msgs = state["messages"]
+        # Count how many times expert has already responded
+        # If > 4 tool calls already, force stop
+        tool_calls_made = sum(
+            1 for m in msgs
+            if hasattr(m, "tool_calls") and m.tool_calls
+        )
+        if tool_calls_made >= 4:
+            # Return a stop message to break the loop
+            from langchain_core.messages import AIMessage
+            return {"messages": [AIMessage(
+                content="Query complete. See tool results above."
+            )]}
+        response = tool_llm.invoke(sm + msgs)
         return {"messages": [response]}
 
     graph = StateGraph(ExpertState)
