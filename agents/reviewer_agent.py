@@ -10,26 +10,28 @@ class ReviewerState(TypedDict):
 
 
 def get_reviewer_app():
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0,
+        max_tokens=600,
+        max_retries=2,
+        request_timeout=30,
+    )
 
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=800)
-
-    prompt = """Convert SQL result to JSON only. No markdown. No explanation.
-
-Table format:
-{"type":"table","columns":["Col1","Col2"],"data":[["a",123]],"kpis":[{"label":"Total","value":"10"}],"summary":"One sentence."}
-
-Text format:
-{"type":"text","content":"answer here","kpis":[],"summary":""}
-
-CRITICAL:
-- Numeric data values must be plain numbers: 2110527 NOT "2,110,527"
-- kpi values are formatted strings: "$2,110,527"
-- Output JSON only — nothing else"""
+    prompt = (
+        'Output JSON only. No markdown.\n'
+        'Table: {"type":"table","columns":["A","B"],"data":[["x",123]],'
+        '"kpis":[{"label":"Total","value":"5"}],"summary":"One sentence."}\n'
+        'Text: {"type":"text","content":"answer","kpis":[],"summary":""}\n'
+        'RULES: numeric data = plain numbers 2110527 NOT "2,110,527". '
+        'kpi values = formatted strings "$2,110,527". Max 4 kpis. JSON only.'
+    )
 
     sm = [SystemMessage(content=prompt)]
 
     def reviewer(state: ReviewerState):
-        return {"messages": [llm.invoke(sm + state["messages"])]}
+        # Only pass last 2 messages to keep input tokens low
+        return {"messages": [llm.invoke(sm + state["messages"][-2:])]}
 
     g = StateGraph(ReviewerState)
     g.add_node("reviewer", reviewer)
