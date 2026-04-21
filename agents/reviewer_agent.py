@@ -1,9 +1,3 @@
-# =============================================================
-# agents/reviewer_agent.py
-# KEY FIX: data values must be RAW NUMBERS (not "2,110,527")
-# so pandas can detect them as numeric for visualization.
-# =============================================================
-
 from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -17,53 +11,28 @@ class ReviewerState(TypedDict):
 
 def get_reviewer_app():
 
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=800)
 
-    prompt = """
-Convert the SQL result into JSON. Output JSON ONLY. No markdown. No explanation.
+    prompt = """Convert SQL result to JSON only. No markdown. No explanation.
 
-FORMAT 1 — tabular data:
-{
-  "type": "table",
-  "columns": ["Customer Name", "Total Revenue"],
-  "data": [
-    ["pooja", 2110527],
-    ["jyoti", 1332132]
-  ],
-  "kpis": [
-    {"label": "Total Records", "value": "10"},
-    {"label": "Max Revenue",   "value": "$2,110,527"},
-    {"label": "Min Revenue",   "value": "$688,865"},
-    {"label": "Average",       "value": "$1,021,417"}
-  ],
-  "summary": "One sentence insight about the data."
-}
+Table format:
+{"type":"table","columns":["Col1","Col2"],"data":[["a",123]],"kpis":[{"label":"Total","value":"10"}],"summary":"One sentence."}
 
-FORMAT 2 — text answer:
-{
-  "type": "text",
-  "content": "Plain text answer here.",
-  "kpis": [],
-  "summary": ""
-}
+Text format:
+{"type":"text","content":"answer here","kpis":[],"summary":""}
 
-CRITICAL RULES:
-- data values for numeric columns MUST be plain numbers: 2110527  NOT "2,110,527"
-- String columns stay as strings: "pooja"
-- kpis values are formatted strings for display: "$2,110,527"
-- summary is ONE sentence in plain English
-- Output ONLY the JSON object — nothing else
-"""
+CRITICAL:
+- Numeric data values must be plain numbers: 2110527 NOT "2,110,527"
+- kpi values are formatted strings: "$2,110,527"
+- Output JSON only — nothing else"""
 
     sm = [SystemMessage(content=prompt)]
 
     def reviewer(state: ReviewerState):
-        r = llm.invoke(sm + state["messages"])
-        return {"messages": [r]}
+        return {"messages": [llm.invoke(sm + state["messages"])]}
 
     g = StateGraph(ReviewerState)
     g.add_node("reviewer", reviewer)
     g.add_edge(START, "reviewer")
     g.add_edge("reviewer", END)
-
     return g.compile()
