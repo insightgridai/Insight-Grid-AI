@@ -10,18 +10,22 @@ class AnalystState(TypedDict):
 
 
 def get_analyst_app():
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0,
+        max_tokens=80,        # very small — just rewrite query
+        max_retries=2,
+        request_timeout=20,
+    )
 
-    # Short output — just rewrite the query, nothing more
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=120)
-
-    prompt = """Rewrite the user query as a precise SQL analytical request.
-Be specific: mention metric, grouping, sort order, limit.
-One sentence only. No SQL code."""
-
-    sm = [SystemMessage(content=prompt)]
+    sm = [SystemMessage(content=(
+        "Rewrite user query as a precise SQL request. "
+        "Include: metric, table, grouping, sort, limit. "
+        "One sentence only. No SQL code."
+    ))]
 
     def analyst(state: AnalystState):
-        return {"messages": [llm.invoke(sm + state["messages"])]}
+        return {"messages": [llm.invoke(sm + state["messages"][-1:])]}
 
     g = StateGraph(AnalystState)
     g.add_node("analyst", analyst)
