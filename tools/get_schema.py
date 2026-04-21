@@ -1,3 +1,7 @@
+# tools/get_schema.py
+# Returns fully qualified table names for Snowflake (DB.SCHEMA.TABLE)
+# so the AI always writes correct SQL without authorization errors.
+
 import json
 from langchain.tools import tool
 
@@ -43,8 +47,13 @@ def get_schema_tool(db_config: dict):
                 cur  = conn.cursor()
                 db_name = db_config.get("database", "").upper()
                 schema  = db_config.get("schema", "PUBLIC").upper()
+                # KEY FIX: return fully qualified name DB.SCHEMA.TABLE
+                # so AI writes ENERGY.PUBLIC.OIL_GAS_PRODUCTION not just OIL_GAS_PRODUCTION
                 cur.execute(f"""
-                    SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE
+                    SELECT
+                        '{db_name}.' || TABLE_SCHEMA || '.' || TABLE_NAME AS table_name,
+                        COLUMN_NAME,
+                        DATA_TYPE
                     FROM {db_name}.INFORMATION_SCHEMA.COLUMNS
                     WHERE TABLE_SCHEMA = '{schema}'
                     ORDER BY TABLE_NAME, ORDINAL_POSITION
@@ -58,11 +67,13 @@ def get_schema_tool(db_config: dict):
                     WHERE table_schema = 'public'
                     ORDER BY table_name, ordinal_position
                 """)
+
             rows = cur.fetchall()
             return json.dumps({
                 "columns": ["table_name", "column_name", "data_type"],
                 "data":    [list(r) for r in rows]
             })
+
         except Exception as e:
             return json.dumps({"columns": ["error"], "data": [[str(e)]]})
         finally:
