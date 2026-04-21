@@ -37,8 +37,8 @@ def verify_pw(password: str, hashed: str) -> bool:
 
 USERS = {
     "admin": {
-        "name":     "Admin User",
-        "password": hash_pw("admin@2026"),
+        "name":     "ROOMEG",
+        "password": hash_pw("INSIGHT@2026"),
         "role":     "admin",
         "email":    "admin@insightgrid.ai",
     },
