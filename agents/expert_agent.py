@@ -1,15 +1,8 @@
-# agents/expert_agent.py
-# Runs schema lookup + SQL execution.
-# Supports PostgreSQL and Snowflake.
-# Returns ONE clean AIMessage with result text for reviewer.
-
 from typing import TypedDict, Annotated
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_core.messages import (
-    AnyMessage, SystemMessage, AIMessage, ToolMessage, HumanMessage
-)
+from langchain_core.messages import AnyMessage, SystemMessage, AIMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from tools.get_schema  import get_schema_tool
 from tools.execute_sql import get_execute_sql_tool
@@ -19,31 +12,27 @@ class ExpertState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
 
-def _extract_clean_result(msgs) -> str:
-    """Pull best plain-text result. Priority: last ToolMessage → last plain AIMessage."""
+def _extract_result(msgs) -> str:
+    """Get best plain-text data result — ToolMessage first, then plain AIMessage."""
     for m in reversed(msgs):
         if isinstance(m, ToolMessage):
             c = str(m.content or "").strip()
             if c and c.lower() not in ("none", ""):
-                return c[:2000]
+                return c[:3000]
     for m in reversed(msgs):
         if isinstance(m, AIMessage):
             c = str(getattr(m, "content", "") or "").strip()
-            if c and not (hasattr(m, "tool_calls") and m.tool_calls):
-                return c[:2000]
+            has_tools = bool(getattr(m, "tool_calls", None))
+            if c and not has_tools:
+                return c[:3000]
     return "No data returned."
 
 
 def get_expert_app(db_config: dict):
     db_type = db_config.get("db_type", "postgresql").lower()
 
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0,
-        max_tokens=400,
-        max_retries=2,
-        request_timeout=40,
-    )
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=400,
+                     max_retries=2, request_timeout=40)
 
     get_schema  = get_schema_tool(db_config)
     execute_sql = get_execute_sql_tool(db_config)
@@ -53,35 +42,32 @@ def get_expert_app(db_config: dict):
     if db_type == "snowflake":
         prompt = (
             "You are a Snowflake SQL expert.\n"
-            "Step 1: call get_schema once to see available tables.\n"
-            "Step 2: write a correct Snowflake SQL query with LIMIT 50.\n"
-            "Step 3: call execute_sql once with that query.\n"
-            "Step 4: return ONLY the raw result. No explanation.\n"
-            "Rules: UPPERCASE table/column names. Use CURRENT_DATE() for dates."
+            "1. Call get_schema once.\n"
+            "2. Write SQL with LIMIT 50.\n"
+            "3. Call execute_sql once.\n"
+            "4. Return ONLY the raw result. No explanation.\n"
+            "Use UPPERCASE names. CURRENT_DATE()."
         )
     else:
         prompt = (
             "You are a PostgreSQL expert.\n"
-            "Step 1: call get_schema once to see available tables.\n"
-            "Step 2: write a correct PostgreSQL query with LIMIT 50.\n"
-            "Step 3: call execute_sql once with that query.\n"
-            "Step 4: return ONLY the raw result. No explanation.\n"
-            "Rules: lowercase names. Use CURRENT_DATE for dates."
+            "1. Call get_schema once.\n"
+            "2. Write SQL with LIMIT 50.\n"
+            "3. Call execute_sql once.\n"
+            "4. Return ONLY the raw result. No explanation.\n"
+            "Use lowercase names. CURRENT_DATE."
         )
 
     sm = [SystemMessage(content=prompt)]
 
     def expert(state: ExpertState):
         msgs = state["messages"]
-        tool_call_count = sum(
-            1 for m in msgs
-            if hasattr(m, "tool_calls") and m.tool_calls
-        )
-        if tool_call_count >= 3:
-            result_text = _extract_clean_result(msgs)
-            return {"messages": [AIMessage(content=result_text)]}
-        safe_msgs = msgs[-6:] if len(msgs) > 6 else msgs
-        return {"messages": [tool_llm.invoke(sm + safe_msgs)]}
+        tool_calls = sum(1 for m in msgs if getattr(m, "tool_calls", None))
+        if tool_calls >= 3:
+            # Hard stop — return clean text
+            return {"messages": [AIMessage(content=_extract_result(msgs))]}
+        safe = msgs[-6:] if len(msgs) > 6 else msgs
+        return {"messages": [tool_llm.invoke(sm + safe)]}
 
     graph = StateGraph(ExpertState)
     graph.add_node("expert", expert)
