@@ -1,13 +1,5 @@
 # =============================================================
-# streamlit_app.py  —  Insight Grid AI  v7
-#
-# FIXES:
-# 1. "Could not format result" — now imports parse_response from
-#    utils.parser which NEVER returns None. Raw text responses
-#    are shown properly instead of that error message.
-# 2. PDF chart sideways — fixed in pdf_export.py (_chart_dimensions)
-# 3. Cost: memory OFF by default, max 4 exchanges kept
-# 4. chart_df uses make_chart_df() for reliable numeric coercion
+# streamlit_app.py  —  Insight Grid AI  (DEBUG VERSION)
 # =============================================================
 
 import json
@@ -16,7 +8,6 @@ import pandas as pd
 import plotly.express as px
 from langchain_core.messages import AIMessage, HumanMessage
 
-# ── Auth gate ───────────────────────────────────────────────
 from auth.login_ui import show_login_popup, check_auth, logout
 
 st.set_page_config(page_title="Insight Grid AI", page_icon="🤖", layout="wide")
@@ -28,17 +19,14 @@ if not check_auth():
     show_login_popup()
     st.stop()
 
-# ── Imports after auth ──────────────────────────────────────
 from agents.supervisor_agent import get_supervisor_app
 from agents.followup_agent   import get_followup_questions
 from db.connection           import test_connection
 from utils.db_store          import load_connections, save_connection
 from utils.pdf_export        import create_pdf
 from utils.cache             import load_bg
-from utils.parser            import parse_response   # ← THE FIX: robust parser
+from utils.parser            import parse_response
 
-
-# ── Background ─────────────────────────────────────────────
 try:
     bg = load_bg("assets/backgroud6.jfif")
     bg_css = f"""
@@ -50,8 +38,6 @@ try:
 except Exception:
     bg_css = ".stApp{background:#0e0e1a;}"
 
-
-# ── CSS ────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
 {bg_css}
@@ -90,8 +76,6 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
 </style>
 """, unsafe_allow_html=True)
 
-
-# ── Session state ──────────────────────────────────────────
 _defaults = {
     "db_connected":   False,
     "db_config":      {},
@@ -113,9 +97,7 @@ for k, v in _defaults.items():
         st.session_state[k] = v
 
 
-# ── Helpers ────────────────────────────────────────────────
 def make_chart_df(raw_df: pd.DataFrame) -> pd.DataFrame:
-    """Coerce string numbers → float so charts always render."""
     df = raw_df.copy()
     for col in df.columns:
         cleaned = (df[col].astype(str)
@@ -130,7 +112,6 @@ def make_chart_df(raw_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def clean_messages_for_openai(msgs):
-    """Keep only valid HumanMessage/AIMessage, max last 8."""
     clean = []
     for m in msgs:
         if isinstance(m, (HumanMessage, AIMessage)):
@@ -140,12 +121,9 @@ def clean_messages_for_openai(msgs):
     return clean[-8:]
 
 
-# ── Header ─────────────────────────────────────────────────
 st.title("🤖 Insight Grid AI")
 st.caption("Where Data, Agents and Decisions Connect")
 
-
-# ── Top bar ────────────────────────────────────────────────
 c1, c2, c3 = st.columns([3, 3, 2])
 with c1:
     st.toggle("🧠 Memory Mode", key="memory_on")
@@ -165,11 +143,9 @@ with c3:
         st.info("🔒 Viewer role")
 
 
-# ── DB Popup ───────────────────────────────────────────────
 @st.dialog("Connect to Database", width="large")
 def db_popup():
     tab1, tab2 = st.tabs(["✏️ Manual Entry", "💾 Saved Connections"])
-
     with tab1:
         conn_name = st.text_input("Connection Name", key="p_name")
         db_type   = st.selectbox(
@@ -197,7 +173,6 @@ def db_popup():
                    "account": account, "user": user, "password": password,
                    "warehouse": warehouse, "database": database,
                    "schema": schema, "role": role}
-
         col1, col2 = st.columns(2)
         with col1:
             if st.button("⚡ Connect Now", use_container_width=True):
@@ -216,7 +191,6 @@ def db_popup():
                     st.success("Saved!")
                 else:
                     st.warning("Enter a connection name first.")
-
     with tab2:
         saved = load_connections()
         if not saved:
@@ -242,7 +216,6 @@ if st.session_state.show_popup:
     db_popup()
 
 
-# ── Sidebar ────────────────────────────────────────────────
 with st.sidebar:
     role  = st.session_state.get("user_role", "viewer")
     uname = st.session_state.get("user_name", "User")
@@ -253,7 +226,6 @@ with st.sidebar:
     if st.button("🚪 Logout", use_container_width=True):
         logout(); st.rerun()
     st.divider()
-
     st.markdown("### 💡 Suggested Questions")
     st.caption("Click → edit → Run Analysis")
     for i, s in enumerate([
@@ -269,7 +241,6 @@ with st.sidebar:
         if st.button(s, key=f"sug_{i}", use_container_width=True):
             st.session_state.pending_text = s
             st.rerun()
-
     st.divider()
     st.markdown("### 🗄️ Active Connection")
     if st.session_state.db_connected:
@@ -281,12 +252,10 @@ with st.sidebar:
             st.rerun()
     else:
         st.warning("No database connected")
-
     if st.session_state.memory_on and st.session_state.history_pairs:
         st.divider()
         st.markdown("### 🧠 Conversation History")
         pairs = st.session_state.history_pairs
-        st.caption(f"{len(pairs)} exchange(s)")
         for idx, pair in enumerate(reversed(pairs)):
             ri    = len(pairs) - 1 - idx
             label = pair['q'][:45] + ("…" if len(pair['q']) > 45 else "")
@@ -302,7 +271,6 @@ with st.sidebar:
             st.rerun()
 
 
-# ── Query box ──────────────────────────────────────────────
 query = st.text_area(
     "💬 Ask your business question",
     height=110,
@@ -340,6 +308,23 @@ if run_clicked:
         with st.spinner("🤖 Running Agents… (Analyst → Expert → Reviewer)"):
             result = app.invoke({"messages": messages, "step": 0})
 
+        # ============================================================
+        # TEMP DEBUG — shows every message so we can see what failed
+        # ============================================================
+        with st.expander("🔍 DEBUG — Agent Messages (remove after fixing)", expanded=True):
+            all_msgs = result.get("messages", [])
+            st.write(f"Total messages: {len(all_msgs)}")
+            for i, msg in enumerate(all_msgs):
+                msg_type    = type(msg).__name__
+                msg_content = str(getattr(msg, "content", ""))
+                tool_calls  = getattr(msg, "tool_calls", None)
+                st.markdown(f"**Message {i+1} — `{msg_type}`**")
+                if tool_calls:
+                    st.warning(f"Tool calls: {tool_calls}")
+                st.code(msg_content[:500] if msg_content else "(empty)", language="text")
+                st.divider()
+        # ============================================================
+
         final = ""
         for msg in reversed(result.get("messages", [])):
             if getattr(msg, "type", "") == "ai":
@@ -349,15 +334,9 @@ if run_clicked:
                     break
 
     except Exception as e:
-        err = str(e).lower()
-        if "rate" in err or "429" in err:
-            st.error("⚠️ **OpenAI Rate Limit.** Wait 60s then try again, or add credits at platform.openai.com → Billing.")
-        elif "badrequest" in err or "400" in err:
-            st.error("⚠️ **Request error.** Turn off Memory Mode and try again.")
-            st.session_state.history       = []
-            st.session_state.history_pairs = []
-        else:
-            st.error(f"⚠️ Error: {str(e)[:300]}")
+        st.error(f"⚠️ FULL ERROR: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="text")
         st.stop()
 
     if not final:
@@ -369,7 +348,6 @@ if run_clicked:
     st.session_state.chart_path     = None
     st.session_state.pending_text   = active_query
 
-    # ── parse_response from utils.parser — NEVER returns None ──
     parsed = parse_response(final)
     st.session_state.last_parsed = parsed
 
@@ -388,10 +366,8 @@ if run_clicked:
         st.session_state.followups = get_followup_questions(active_query)
     except Exception:
         st.session_state.followups = [
-            "Show top 5 by revenue",
-            "Show monthly trend",
-            "Compare this year vs last year",
-            "Show bottom 5 performers",
+            "Show top 5 by revenue", "Show monthly trend",
+            "Compare this year vs last year", "Show bottom 5 performers",
         ]
 
     if st.session_state.memory_on:
@@ -438,12 +414,8 @@ if st.session_state.last_df is not None:
     st.dataframe(st.session_state.last_df, use_container_width=True)
     if st.session_state.get("permissions", {}).get("can_download", True):
         csv = st.session_state.last_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📥 Download CSV (Power BI)",
-            data=csv,
-            file_name="insight_data.csv",
-            mime="text/csv"
-        )
+        st.download_button("📥 Download CSV", data=csv,
+                           file_name="insight_data.csv", mime="text/csv")
 
 
 # ── Visualization ──────────────────────────────────────────
@@ -452,14 +424,11 @@ if st.session_state.chart_df is not None:
     num_cols = cdf.select_dtypes(include="number").columns.tolist()
     all_cols = cdf.columns.tolist()
 
-    # Last-resort: force-coerce the last column if still no numerics
     if not num_cols and all_cols:
         last_col = all_cols[-1]
         cdf[last_col] = pd.to_numeric(
-            cdf[last_col].astype(str)
-                .str.replace(",", "", regex=False).str.strip(),
-            errors="coerce"
-        )
+            cdf[last_col].astype(str).str.replace(",","",regex=False).str.strip(),
+            errors="coerce")
         st.session_state.chart_df = cdf
         num_cols = cdf.select_dtypes(include="number").columns.tolist()
 
@@ -470,20 +439,16 @@ if st.session_state.chart_df is not None:
             chart_type = st.selectbox(
                 "Chart Type",
                 ["Bar","Horizontal Bar","Line","Area","Pie","Donut","Treemap","Scatter"],
-                key="viz_chart_type"
-            )
+                key="viz_chart_type")
         with vc2:
-            val_col = st.selectbox(
-                "Value (metric)", num_cols,
-                index=len(num_cols)-1, key="viz_value_col"
-            )
+            val_col = st.selectbox("Value (metric)", num_cols,
+                                   index=len(num_cols)-1, key="viz_value_col")
         with vc3:
             lbl_options = [c for c in all_cols if c != val_col] or all_cols
             lbl_col     = st.selectbox("Label / Group", lbl_options, key="viz_label_col")
 
         title = f"{val_col} by {lbl_col}"
         fig   = None
-
         if   chart_type == "Bar":
             fig = px.bar(cdf, x=lbl_col, y=val_col, color=val_col,
                          color_continuous_scale="Blues", title=title, text_auto=True)
@@ -503,26 +468,17 @@ if st.session_state.chart_df is not None:
         elif chart_type == "Scatter":
             fig = px.scatter(cdf, x=lbl_col, y=val_col, color=val_col,
                              color_continuous_scale="Blues", title=title)
-
         if fig:
             fig.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(10,10,30,0.6)",
-                font_color="white",
-                title_font_color="#48cae4",
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(10,10,30,0.6)",
+                font_color="white", title_font_color="#48cae4",
                 legend=dict(bgcolor="rgba(0,0,0,0)"),
-                margin=dict(l=20, r=20, t=50, b=20)
-            )
+                margin=dict(l=20, r=20, t=50, b=20))
             fig.update_xaxes(gridcolor="rgba(255,255,255,0.08)")
             fig.update_yaxes(gridcolor="rgba(255,255,255,0.08)")
             st.plotly_chart(fig, use_container_width=True)
-
-            # Save PNG for PDF — explicit 900×500 forces landscape, no rotation
             try:
-                fig.write_image(
-                    "chart_export.png",
-                    width=900, height=500, scale=2
-                )
+                fig.write_image("chart_export.png", width=900, height=500, scale=2)
                 st.session_state.chart_path = "chart_export.png"
             except Exception:
                 pass
@@ -533,8 +489,7 @@ if st.session_state.chart_df is not None:
 # ── Text result ────────────────────────────────────────────
 if (st.session_state.last_response
         and st.session_state.last_df is None
-        and parsed
-        and isinstance(parsed, dict)
+        and parsed and isinstance(parsed, dict)
         and parsed.get("type") == "text"):
     st.subheader("💬 Analysis Result")
     st.markdown(parsed.get("content", st.session_state.last_response))
@@ -559,16 +514,11 @@ if st.session_state.last_response and st.session_state.last_parsed:
             and st.session_state.get("permissions", {}).get("can_download", True)):
         try:
             pdf_file = create_pdf(
-                p,
-                st.session_state.last_run_query or "",
-                chart_path=st.session_state.get("chart_path")
-            )
+                p, st.session_state.last_run_query or "",
+                chart_path=st.session_state.get("chart_path"))
             with open(pdf_file, "rb") as f:
-                st.download_button(
-                    "📄 Download Report (PDF)",
-                    data=f,
-                    file_name="Insight_Report.pdf",
-                    mime="application/pdf"
-                )
+                st.download_button("📄 Download Report (PDF)", data=f,
+                                   file_name="Insight_Report.pdf",
+                                   mime="application/pdf")
         except Exception as e:
             st.caption(f"PDF note: {e}")
