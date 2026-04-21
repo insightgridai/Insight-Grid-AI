@@ -31,19 +31,19 @@ def get_expert_app(db_config: dict):
     if db_type == "snowflake":
         prompt = (
             "You are a Snowflake SQL expert.\n"
-            "1. Call get_schema once.\n"
-            "2. Write SQL with LIMIT 50 always.\n"
-            "3. Call execute_sql once.\n"
-            "4. Return raw result only. No explanation.\n"
-            "Use UPPERCASE column names. Use CURRENT_DATE()."
+            "Step 1: call get_schema once.\n"
+            "Step 2: write SQL, always add LIMIT 50.\n"
+            "Step 3: call execute_sql once.\n"
+            "Step 4: return only the raw result.\n"
+            "Use UPPERCASE column/table names. Use CURRENT_DATE()."
         )
     else:
         prompt = (
             "You are a PostgreSQL expert.\n"
-            "1. Call get_schema once.\n"
-            "2. Write SQL with LIMIT 50 always.\n"
-            "3. Call execute_sql once.\n"
-            "4. Return raw result only. No explanation.\n"
+            "Step 1: call get_schema once.\n"
+            "Step 2: write SQL, always add LIMIT 50.\n"
+            "Step 3: call execute_sql once.\n"
+            "Step 4: return only the raw result.\n"
             "Use lowercase names. Use CURRENT_DATE."
         )
 
@@ -51,15 +51,16 @@ def get_expert_app(db_config: dict):
 
     def expert(state: ExpertState):
         msgs = state["messages"]
-        # Hard stop after 3 tool calls to prevent token explosion
-        tool_calls_made = sum(
+        # Count tool calls already made — stop at 3 to prevent loops
+        tool_call_count = sum(
             1 for m in msgs
-            if hasattr(m, "tool_calls") and getattr(m, "tool_calls", None)
+            if hasattr(m, "tool_calls") and m.tool_calls
         )
-        if tool_calls_made >= 3:
-            return {"messages": [AIMessage(content="Done. See results above.")]}
-        # Only send last 4 messages to limit input tokens
-        return {"messages": [tool_llm.invoke(sm + msgs[-4:])]}
+        if tool_call_count >= 3:
+            return {"messages": [AIMessage(content="Result complete.")]}
+        # Send system + last 6 messages only to limit tokens
+        safe_msgs = msgs[-6:] if len(msgs) > 6 else msgs
+        return {"messages": [tool_llm.invoke(sm + safe_msgs)]}
 
     graph = StateGraph(ExpertState)
     graph.add_node("expert", expert)
