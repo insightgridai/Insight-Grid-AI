@@ -13,25 +13,33 @@ def get_reviewer_app():
     llm = ChatOpenAI(
         model="gpt-4o-mini",
         temperature=0,
-        max_tokens=600,
+        max_tokens=700,
         max_retries=2,
         request_timeout=30,
     )
 
     prompt = (
-        'Output JSON only. No markdown.\n'
-        'Table: {"type":"table","columns":["A","B"],"data":[["x",123]],'
-        '"kpis":[{"label":"Total","value":"5"}],"summary":"One sentence."}\n'
-        'Text: {"type":"text","content":"answer","kpis":[],"summary":""}\n'
-        'RULES: numeric data = plain numbers 2110527 NOT "2,110,527". '
-        'kpi values = formatted strings "$2,110,527". Max 4 kpis. JSON only.'
+        "Convert the SQL result to JSON only. No markdown. No explanation.\n\n"
+        "Table format:\n"
+        '{"type":"table","columns":["Col1","Col2"],"data":[["val",123]],'
+        '"kpis":[{"label":"Total Records","value":"5"}],"summary":"One sentence."}\n\n'
+        "Text format:\n"
+        '{"type":"text","content":"answer here","kpis":[],"summary":""}\n\n'
+        "RULES:\n"
+        "- Numeric column values must be plain numbers: 2110527 NOT '2,110,527'\n"
+        "- kpi values are display strings: '$2,110,527'\n"
+        "- Include 2-4 kpis (Total Records, Max, Min, Average)\n"
+        "- summary: one plain English sentence\n"
+        "- Output JSON ONLY — nothing else"
     )
 
     sm = [SystemMessage(content=prompt)]
 
     def reviewer(state: ReviewerState):
-        # Only pass last 2 messages to keep input tokens low
-        return {"messages": [llm.invoke(sm + state["messages"][-2:])]}
+        msgs = state["messages"]
+        # Safe slice — works even if only 1 message
+        recent = msgs[-2:] if len(msgs) >= 2 else msgs
+        return {"messages": [llm.invoke(sm + recent)]}
 
     g = StateGraph(ReviewerState)
     g.add_node("reviewer", reviewer)
