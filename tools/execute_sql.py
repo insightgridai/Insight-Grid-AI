@@ -1,7 +1,3 @@
-# tools/execute_sql.py
-# Supports PostgreSQL AND Snowflake.
-# Returns JSON string: {"columns": [...], "data": [...]}
-
 import json
 from langchain.tools import tool
 
@@ -35,14 +31,12 @@ def _sf_connect(db_config):
 
 
 def get_execute_sql_tool(db_config: dict):
-
     db_type = db_config.get("db_type", "postgresql").lower()
 
     @tool
     def execute_sql(query: str) -> str:
         """Execute a SQL query and return results as JSON."""
-        conn = None
-        cur  = None
+        conn = cur = None
         try:
             if db_type == "snowflake":
                 conn = _sf_connect(db_config)
@@ -55,23 +49,21 @@ def get_execute_sql_tool(db_config: dict):
             if cur.description:
                 columns = [col[0] for col in cur.description]
                 rows    = cur.fetchall()
-                # Convert all values to JSON-serialisable types
-                data = []
+                data    = []
                 for row in rows:
-                    clean_row = []
+                    clean = []
                     for val in row:
                         if val is None:
-                            clean_row.append(None)
-                        elif hasattr(val, "item"):          # numpy types
-                            clean_row.append(val.item())
+                            clean.append(None)
+                        elif hasattr(val, "item"):
+                            clean.append(val.item())
                         else:
                             try:
-                                json.dumps(val)             # test serialisable
-                                clean_row.append(val)
+                                json.dumps(val)
+                                clean.append(val)
                             except (TypeError, ValueError):
-                                clean_row.append(str(val))
-                    data.append(clean_row)
-
+                                clean.append(str(val))
+                    data.append(clean)
                 return json.dumps({"columns": columns, "data": data})
             else:
                 conn.commit()
