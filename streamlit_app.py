@@ -1,12 +1,26 @@
-# =============================================================
-# streamlit_app.py  —  Insight Grid AI  FINAL
-# =============================================================
-
 import json
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from langchain_core.messages import AIMessage, HumanMessage
+
+# ============================================================
+# AUTH — loaded first, before ANYTHING else renders
+# ============================================================
+from auth.login_ui import show_login_popup, check_auth, logout
+
+st.set_page_config(page_title="Insight Grid AI", page_icon="🤖", layout="wide")
+
+if "logged_in"   not in st.session_state: st.session_state.logged_in   = False
+if "permissions" not in st.session_state: st.session_state.permissions = {}
+
+if not check_auth():
+    show_login_popup()
+    st.stop()
+
+# ============================================================
+# Everything below only runs AFTER successful login
+# ============================================================
 
 from agents.supervisor_agent import get_supervisor_app
 from agents.followup_agent   import get_followup_questions
@@ -14,10 +28,6 @@ from db.connection           import test_connection
 from utils.db_store          import load_connections, save_connection
 from utils.pdf_export        import create_pdf
 from utils.cache             import load_bg
-
-
-# ── Page config ────────────────────────────────────────────
-st.set_page_config(page_title="Insight Grid AI", page_icon="🤖", layout="wide")
 
 
 # ── Background ─────────────────────────────────────────────
@@ -62,6 +72,13 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
     border:1px solid rgba(0,180,216,0.3)!important;
     color:#90e0ef!important; text-align:left; width:100%;
 }}
+.role-badge {{
+    display:inline-block; padding:2px 10px; border-radius:20px;
+    font-size:0.75rem; font-weight:700; letter-spacing:0.05em;
+}}
+.role-admin   {{ background:#0077b6; color:white; }}
+.role-analyst {{ background:#00b4d8; color:white; }}
+.role-viewer  {{ background:#48cae4; color:#0e0e1a; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -74,8 +91,8 @@ _defaults = {
     "history":        [],
     "history_pairs":  [],
     "last_response":  "",
-    "last_df":        None,       # display df  (original strings)
-    "chart_df":       None,       # numeric df  (for charts)
+    "last_df":        None,
+    "chart_df":       None,
     "last_parsed":    None,
     "followups":      [],
     "show_popup":     False,
@@ -88,7 +105,7 @@ for k, v in _defaults.items():
         st.session_state[k] = v
 
 
-# ── Parse helper ───────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────
 def parse_response(text: str):
     try:
         s = text.find("{"); e = text.rfind("}") + 1
@@ -97,23 +114,15 @@ def parse_response(text: str):
         return None
 
 
-# ── Numeric coercion helper ────────────────────────────────
 def make_chart_df(raw_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Return a copy where every column that can be numeric IS numeric.
-    Handles comma-formatted numbers like "2,110,527" -> 2110527.
-    """
     df = raw_df.copy()
     for col in df.columns:
-        cleaned = (
-            df[col].astype(str)
-            .str.replace(",", "", regex=False)
-            .str.replace("$", "", regex=False)
-            .str.replace("%", "", regex=False)
-            .str.strip()
-        )
+        cleaned = (df[col].astype(str)
+                   .str.replace(",","",regex=False)
+                   .str.replace("$","",regex=False)
+                   .str.replace("%","",regex=False)
+                   .str.strip())
         coerced = pd.to_numeric(cleaned, errors="coerce")
-        # Apply if at least one value converted successfully
         if coerced.notna().any():
             df[col] = coerced
     return df
@@ -130,14 +139,18 @@ with c1:
     st.toggle("🧠 Memory Mode", key="memory_on")
 with c2:
     if st.session_state.db_connected:
-        name  = st.session_state.db_config.get("name", "")
-        dbt   = st.session_state.db_config.get("db_type", "postgresql").upper()
+        name = st.session_state.db_config.get("name","")
+        dbt  = st.session_state.db_config.get("db_type","postgresql").upper()
         st.success(f"✅ {name} ({dbt})" if name else f"✅ Connected ({dbt})")
     else:
         st.warning("⚠️ Not Connected")
 with c3:
-    if st.button("🔌 Connect Database", use_container_width=True):
-        st.session_state.show_popup = True
+    perms = st.session_state.get("permissions", {})
+    if perms.get("can_connect_db", True):
+        if st.button("🔌 Connect Database", use_container_width=True):
+            st.session_state.show_popup = True
+    else:
+        st.info("🔒 Viewer role")
 
 
 # ── DB Popup ───────────────────────────────────────────────
@@ -197,6 +210,17 @@ if st.session_state.show_popup:
 
 # ── Sidebar ────────────────────────────────────────────────
 with st.sidebar:
+    # User info + logout
+    role  = st.session_state.get("user_role","viewer")
+    uname = st.session_state.get("user_name","User")
+    st.markdown(
+        f'👤 **{uname}** &nbsp;'
+        f'<span class="role-badge role-{role}">{role.upper()}</span>',
+        unsafe_allow_html=True)
+    if st.button("🚪 Logout", use_container_width=True):
+        logout(); st.rerun()
+    st.divider()
+
     st.markdown("### 💡 Suggested Questions")
     st.caption("Click → edit → Run Analysis")
     for i, s in enumerate([
@@ -210,8 +234,7 @@ with st.sidebar:
         "Total revenue by month for all years",
     ]):
         if st.button(s, key=f"sug_{i}", use_container_width=True):
-            st.session_state.pending_text = s
-            st.rerun()
+            st.session_state.pending_text = s; st.rerun()
 
     st.divider()
     st.markdown("### 🗄️ Active Connection")
@@ -241,14 +264,18 @@ with st.sidebar:
 
 
 # ── Query box ──────────────────────────────────────────────
-# value= is safe here because we do NOT use key=
 query = st.text_area(
     "💬 Ask your business question",
     height=110,
     value=st.session_state.pending_text,
     placeholder="e.g. Show top 10 customers by total revenue",
 )
+
 run_clicked = st.button("🚀 Run Analysis", type="primary")
+
+if run_clicked and not st.session_state.get("permissions",{}).get("can_run_query", True):
+    st.warning("🔒 Your role does not have permission to run queries.")
+    run_clicked = False
 
 
 # ── Run Analysis ───────────────────────────────────────────
@@ -261,7 +288,6 @@ if run_clicked:
     if not st.session_state.db_connected:
         st.error("❌ Connect to a database first."); st.stop()
 
-    # Build messages
     if st.session_state.memory_on and st.session_state.history:
         messages = st.session_state.history[-6:] + [HumanMessage(content=active_query)]
     else:
@@ -285,10 +311,8 @@ if run_clicked:
     st.session_state.last_parsed = parsed
 
     if parsed and parsed.get("type") == "table":
-        # Build display df
         raw_df = pd.DataFrame(parsed.get("data",[]), columns=parsed.get("columns",[]))
         st.session_state.last_df  = raw_df
-        # Build chart df — force numeric on all possible columns
         st.session_state.chart_df = make_chart_df(raw_df)
     else:
         st.session_state.last_df  = None
@@ -337,36 +361,33 @@ if parsed and isinstance(parsed, dict) and parsed.get("summary"):
 if st.session_state.last_df is not None:
     st.subheader("📊 Structured Result")
     st.dataframe(st.session_state.last_df, use_container_width=True)
+    if st.session_state.get("permissions",{}).get("can_download", True):
+        csv_data = st.session_state.last_df.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Download CSV (for Power BI)", data=csv_data,
+                           file_name="insight_data.csv", mime="text/csv")
 
 
 # ── Visualization ──────────────────────────────────────────
-# Uses chart_df where all possible columns are already numeric.
-# Falls back to trying every column even if coercion is imperfect.
 if st.session_state.chart_df is not None:
     cdf      = st.session_state.chart_df
     num_cols = cdf.select_dtypes(include="number").columns.tolist()
     all_cols = cdf.columns.tolist()
 
-    # If still no numeric cols detected, force-convert the last column
     if not num_cols and len(all_cols) >= 1:
         last_col = all_cols[-1]
         cdf[last_col] = pd.to_numeric(
             cdf[last_col].astype(str).str.replace(",","",regex=False).str.strip(),
-            errors="coerce"
-        )
+            errors="coerce")
         st.session_state.chart_df = cdf
         num_cols = cdf.select_dtypes(include="number").columns.tolist()
 
     if num_cols:
         st.subheader("📈 Interactive Visualization")
         vc1, vc2, vc3 = st.columns(3)
-
         with vc1:
-            chart_type = st.selectbox(
-                "Chart Type",
+            chart_type = st.selectbox("Chart Type",
                 ["Bar","Horizontal Bar","Line","Area","Pie","Donut","Treemap","Scatter"],
-                key="viz_chart_type"
-            )
+                key="viz_chart_type")
         with vc2:
             val_col = st.selectbox("Value (metric)", num_cols,
                                    index=len(num_cols)-1, key="viz_value_col")
@@ -376,34 +397,32 @@ if st.session_state.chart_df is not None:
 
         title = f"{val_col} by {lbl_col}"
         fig = None
-
         if   chart_type == "Bar":
-            fig = px.bar(cdf, x=lbl_col, y=val_col, color=val_col,
-                         color_continuous_scale="Blues", title=title, text_auto=True)
+            fig = px.bar(cdf,x=lbl_col,y=val_col,color=val_col,
+                         color_continuous_scale="Blues",title=title,text_auto=True)
         elif chart_type == "Horizontal Bar":
-            fig = px.bar(cdf, x=val_col, y=lbl_col, orientation="h", color=val_col,
-                         color_continuous_scale="Teal", title=title, text_auto=True)
+            fig = px.bar(cdf,x=val_col,y=lbl_col,orientation="h",color=val_col,
+                         color_continuous_scale="Teal",title=title,text_auto=True)
         elif chart_type == "Line":
-            fig = px.line(cdf, x=lbl_col, y=val_col, markers=True, title=title)
+            fig = px.line(cdf,x=lbl_col,y=val_col,markers=True,title=title)
         elif chart_type == "Area":
-            fig = px.area(cdf, x=lbl_col, y=val_col, title=title)
+            fig = px.area(cdf,x=lbl_col,y=val_col,title=title)
         elif chart_type == "Pie":
-            fig = px.pie(cdf, names=lbl_col, values=val_col, title=title)
+            fig = px.pie(cdf,names=lbl_col,values=val_col,title=title)
         elif chart_type == "Donut":
-            fig = px.pie(cdf, names=lbl_col, values=val_col, hole=0.45, title=title)
+            fig = px.pie(cdf,names=lbl_col,values=val_col,hole=0.45,title=title)
         elif chart_type == "Treemap":
-            fig = px.treemap(cdf, path=[lbl_col], values=val_col, title=title)
+            fig = px.treemap(cdf,path=[lbl_col],values=val_col,title=title)
         elif chart_type == "Scatter":
-            fig = px.scatter(cdf, x=lbl_col, y=val_col, color=val_col,
-                             color_continuous_scale="Blues", title=title)
+            fig = px.scatter(cdf,x=lbl_col,y=val_col,color=val_col,
+                             color_continuous_scale="Blues",title=title)
 
         if fig:
             fig.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(10,10,30,0.6)",
                 font_color="white", title_font_color="#48cae4",
                 legend=dict(bgcolor="rgba(0,0,0,0)"),
-                margin=dict(l=20,r=20,t=50,b=20),
-            )
+                margin=dict(l=20,r=20,t=50,b=20))
             fig.update_xaxes(gridcolor="rgba(255,255,255,0.08)")
             fig.update_yaxes(gridcolor="rgba(255,255,255,0.08)")
             st.plotly_chart(fig, use_container_width=True)
@@ -412,8 +431,6 @@ if st.session_state.chart_df is not None:
                 st.session_state.chart_path = "chart_export.png"
             except Exception:
                 pass
-    else:
-        st.info("ℹ️ No numeric data available for chart.")
 
 
 # ── Text result ────────────────────────────────────────────
@@ -431,14 +448,14 @@ if st.session_state.followups:
     for i, q in enumerate(st.session_state.followups):
         with fcols[i % 2]:
             if st.button(q, key=f"fq_{i}", use_container_width=True):
-                st.session_state.pending_text = q
-                st.rerun()
+                st.session_state.pending_text = q; st.rerun()
 
 
 # ── PDF download ───────────────────────────────────────────
 if st.session_state.last_response and st.session_state.last_parsed:
     p = st.session_state.last_parsed
-    if p.get("type") in ("table","text"):
+    if (p.get("type") in ("table","text")
+            and st.session_state.get("permissions",{}).get("can_download", True)):
         try:
             pdf_file = create_pdf(p, st.session_state.last_run_query or "",
                                   chart_path=st.session_state.get("chart_path"))
