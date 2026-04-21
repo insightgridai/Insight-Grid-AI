@@ -1,7 +1,3 @@
-# tools/get_schema.py
-# Supports PostgreSQL AND Snowflake.
-# Returns JSON string with table/column/data_type info.
-
 import json
 from langchain.tools import tool
 
@@ -35,19 +31,16 @@ def _sf_connect(db_config):
 
 
 def get_schema_tool(db_config: dict):
-
     db_type = db_config.get("db_type", "postgresql").lower()
 
     @tool
     def get_schema(_: str = "") -> str:
         """Return database tables and columns as JSON."""
-        conn = None
-        cur  = None
+        conn = cur = None
         try:
             if db_type == "snowflake":
                 conn = _sf_connect(db_config)
                 cur  = conn.cursor()
-                # Snowflake: use INFORMATION_SCHEMA in the connected database
                 db_name = db_config.get("database", "").upper()
                 schema  = db_config.get("schema", "PUBLIC").upper()
                 cur.execute(f"""
@@ -65,14 +58,11 @@ def get_schema_tool(db_config: dict):
                     WHERE table_schema = 'public'
                     ORDER BY table_name, ordinal_position
                 """)
-
             rows = cur.fetchall()
-            data = [list(r) for r in rows]
             return json.dumps({
                 "columns": ["table_name", "column_name", "data_type"],
-                "data": data
+                "data":    [list(r) for r in rows]
             })
-
         except Exception as e:
             return json.dumps({"columns": ["error"], "data": [[str(e)]]})
         finally:
