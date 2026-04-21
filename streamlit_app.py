@@ -27,7 +27,6 @@ from agents.followup_agent   import get_followup_questions
 from db.connection           import test_connection
 from utils.db_store          import load_connections, save_connection
 from utils.pdf_export        import create_pdf
-from utils.word_export       import create_word
 from utils.cache             import load_bg
 
 
@@ -452,55 +451,16 @@ if st.session_state.followups:
                 st.session_state.pending_text = q; st.rerun()
 
 
-# ── PDF / WORD download ────────────────────────────────────
+# ── PDF download ───────────────────────────────────────────
 if st.session_state.last_response and st.session_state.last_parsed:
     p = st.session_state.last_parsed
-
-    if (
-        p.get("type") in ("table", "text")
-        and st.session_state.get("permissions", {}).get("can_download", True)
-    ):
-
-        d1, d2 = st.columns(2)
-
-        # PDF
-        with d1:
-            try:
-                pdf_file = create_pdf(
-                    p,
-                    st.session_state.last_run_query or "",
-                    chart_path=st.session_state.get("chart_path")
-                )
-
-                with open(pdf_file, "rb") as f:
-                    st.download_button(
-                        "📄 Download Report (PDF)",
-                        data=f,
-                        file_name="Insight_Report.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-
-            except Exception as e:
-                st.caption(f"PDF note: {e}")
-
-        # WORD
-        with d2:
-            try:
-                word_file = create_word(
-                    p,
-                    st.session_state.last_run_query or "",
-                    chart_path=st.session_state.get("chart_path")
-                )
-
-                with open(word_file, "rb") as f:
-                    st.download_button(
-                        "📝 Download Report (Word)",
-                        data=f,
-                        file_name="Insight_Report.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True
-                    )
-
-            except Exception as e:
-                st.caption(f"Word note: {e}")
+    if (p.get("type") in ("table","text")
+            and st.session_state.get("permissions",{}).get("can_download", True)):
+        try:
+            pdf_file = create_pdf(p, st.session_state.last_run_query or "",
+                                  chart_path=st.session_state.get("chart_path"))
+            with open(pdf_file,"rb") as f:
+                st.download_button("📄 Download Report (PDF)", data=f,
+                                   file_name="Insight_Report.pdf", mime="application/pdf")
+        except Exception as e:
+            st.caption(f"PDF note: {e}")
