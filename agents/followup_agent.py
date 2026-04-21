@@ -1,13 +1,8 @@
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
-_llm = ChatOpenAI(
-    model="gpt-4o-mini",
-    temperature=0,
-    max_tokens=80,
-    max_retries=1,
-    request_timeout=15,
-)
+_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=80,
+                  max_retries=1, request_timeout=15)
 
 _FALLBACK = [
     "Show top 5 by revenue",
@@ -15,7 +10,6 @@ _FALLBACK = [
     "Compare this year vs last year",
     "Show bottom 5 performers",
 ]
-
 
 def get_followup_questions(query: str) -> list[str]:
     try:
