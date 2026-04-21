@@ -4,7 +4,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 _llm = ChatOpenAI(
     model="gpt-4o-mini",
     temperature=0,
-    max_tokens=60,        # 4 short questions = ~60 tokens max
+    max_tokens=80,
     max_retries=1,
     request_timeout=15,
 )
@@ -21,10 +21,10 @@ def get_followup_questions(query: str) -> list[str]:
     try:
         r = _llm.invoke([
             SystemMessage(content=(
-                "4 follow-up questions. Max 6 words each. "
-                "One per line. No numbers."
+                "Generate 4 short follow-up business questions. "
+                "Max 7 words each. One per line. No numbers or bullets."
             )),
-            HumanMessage(content=query[:100]),
+            HumanMessage(content=str(query)[:150]),
         ]).content
         qs = [x.strip() for x in r.split("\n") if x.strip()]
         return qs[:4] if qs else _FALLBACK
