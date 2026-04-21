@@ -1,22 +1,7 @@
-# =============================================================
-# auth/users.py
-# User store — hashed passwords + roles
-#
-# ROLES:
-#   admin  — full access: connect DB, run queries, manage users
-#   analyst — run queries, view results, download
-#   viewer  — view results only, no DB connect, no download
-#
-# To add a new user:
-#   python -c "from auth.users import hash_pw; print(hash_pw('mypassword'))"
-#   Then paste the hash into USERS below.
-# =============================================================
-
 import hashlib
 
 
 def hash_pw(password: str) -> str:
-    """SHA-256 hash of password. Use this to generate new hashes."""
     return hashlib.sha256(password.encode()).hexdigest()
 
 
@@ -26,28 +11,44 @@ def verify_pw(password: str, hashed: str) -> bool:
 
 # =============================================================
 # USER STORE
-# Add / edit users here.
-# Never store plain-text passwords.
 #
-# Default credentials:
-#   admin   / admin@2026
-#   analyst / analyst@2026
-#   viewer  / viewer@2026
+# HOW TO CHANGE USERNAME:
+#   - The KEY (left side) is what user types in the login box
+#   - The "name" is just the display name shown in sidebar
+#   - Change the KEY to change the login username
+#
+# HOW TO CHANGE PASSWORD:
+#   - Change the text inside hash_pw("...")
+#   - That text is the new password
+#
+# CURRENT CREDENTIALS:
+#   Username : ROOMEG        Password : INSIGHT@2026   Role: Admin
+#   Username : analyst       Password : analyst@2026   Role: Analyst
+#   Username : viewer        Password : viewer@2026    Role: Viewer
 # =============================================================
 
 USERS = {
-    "admin": {
+
+    # ── Admin ─────────────────────────────────────────────
+    # LOGIN: username = ROOMEG  |  password = INSIGHT@2026
+    "roomeg": {
         "name":     "ROOMEG",
         "password": hash_pw("INSIGHT@2026"),
         "role":     "admin",
         "email":    "admin@insightgrid.ai",
     },
+
+    # ── Analyst ───────────────────────────────────────────
+    # LOGIN: username = analyst  |  password = analyst@2026
     "analyst": {
         "name":     "Analyst User",
         "password": hash_pw("analyst@2026"),
         "role":     "analyst",
         "email":    "analyst@insightgrid.ai",
     },
+
+    # ── Viewer ────────────────────────────────────────────
+    # LOGIN: username = viewer  |  password = viewer@2026
     "viewer": {
         "name":     "Viewer User",
         "password": hash_pw("viewer@2026"),
@@ -57,7 +58,9 @@ USERS = {
 }
 
 
-# Role permissions map
+# =============================================================
+# PERMISSIONS PER ROLE
+# =============================================================
 PERMISSIONS = {
     "admin": {
         "can_connect_db":   True,
@@ -80,7 +83,8 @@ PERMISSIONS = {
 }
 
 
-def get_user(username: str) -> dict | None:
+def get_user(username: str):
+    # Always lowercase the lookup so ROOMEG / roomeg / Roomeg all work
     return USERS.get(username.strip().lower())
 
 
