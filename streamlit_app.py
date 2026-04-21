@@ -1,13 +1,9 @@
-# =============================================================
-# streamlit_app.py  —  Insight Grid AI  (DEBUG VERSION)
-# =============================================================
-
-import json
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from langchain_core.messages import AIMessage, HumanMessage
 
+# ── Auth — runs before anything else ───────────────────────
 from auth.login_ui import show_login_popup, check_auth, logout
 
 st.set_page_config(page_title="Insight Grid AI", page_icon="🤖", layout="wide")
@@ -19,6 +15,7 @@ if not check_auth():
     show_login_popup()
     st.stop()
 
+# ── Imports (only after auth) ───────────────────────────────
 from agents.supervisor_agent import get_supervisor_app
 from agents.followup_agent   import get_followup_questions
 from db.connection           import test_connection
@@ -27,6 +24,8 @@ from utils.pdf_export        import create_pdf
 from utils.cache             import load_bg
 from utils.parser            import parse_response
 
+
+# ── Background ─────────────────────────────────────────────
 try:
     bg = load_bg("assets/backgroud6.jfif")
     bg_css = f"""
@@ -38,6 +37,8 @@ try:
 except Exception:
     bg_css = ".stApp{background:#0e0e1a;}"
 
+
+# ── CSS ────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
 {bg_css}
@@ -76,6 +77,8 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
 </style>
 """, unsafe_allow_html=True)
 
+
+# ── Session state ──────────────────────────────────────────
 _defaults = {
     "db_connected":   False,
     "db_config":      {},
@@ -97,6 +100,7 @@ for k, v in _defaults.items():
         st.session_state[k] = v
 
 
+# ── Helpers ────────────────────────────────────────────────
 def make_chart_df(raw_df: pd.DataFrame) -> pd.DataFrame:
     df = raw_df.copy()
     for col in df.columns:
@@ -106,24 +110,27 @@ def make_chart_df(raw_df: pd.DataFrame) -> pd.DataFrame:
                    .str.replace("%", "", regex=False)
                    .str.strip())
         coerced = pd.to_numeric(cleaned, errors="coerce")
-        if coerced.notna().sum() / max(len(df), 1) >= 0.6:
+        if coerced.notna().any():
             df[col] = coerced
     return df
 
 
-def clean_messages_for_openai(msgs):
+def clean_history(msgs):
     clean = []
     for m in msgs:
         if isinstance(m, (HumanMessage, AIMessage)):
-            content = getattr(m, "content", "")
-            if isinstance(content, str) and content.strip():
+            c = getattr(m, "content", "")
+            if isinstance(c, str) and c.strip():
                 clean.append(m)
-    return clean[-8:]
+    return clean[-4:]   # max 2 exchanges
 
 
+# ── Header ─────────────────────────────────────────────────
 st.title("🤖 Insight Grid AI")
 st.caption("Where Data, Agents and Decisions Connect")
 
+
+# ── Top bar ────────────────────────────────────────────────
 c1, c2, c3 = st.columns([3, 3, 2])
 with c1:
     st.toggle("🧠 Memory Mode", key="memory_on")
@@ -143,92 +150,74 @@ with c3:
         st.info("🔒 Viewer role")
 
 
+# ── DB Popup ───────────────────────────────────────────────
 @st.dialog("Connect to Database", width="large")
 def db_popup():
     tab1, tab2 = st.tabs(["✏️ Manual Entry", "💾 Saved Connections"])
     with tab1:
         conn_name = st.text_input("Connection Name", key="p_name")
-        db_type   = st.selectbox(
-            "Type", ["postgresql", "snowflake"], key="p_db_type",
-            format_func=lambda x: "PostgreSQL" if x == "postgresql" else "Snowflake"
-        )
+        db_type   = st.selectbox("Type", ["postgresql","snowflake"], key="p_db_type",
+                      format_func=lambda x: "PostgreSQL" if x=="postgresql" else "Snowflake")
         if db_type == "postgresql":
-            host     = st.text_input("Host", key="p_host")
-            port     = st.text_input("Port", key="p_port", value="5432")
-            database = st.text_input("Database", key="p_database")
-            user     = st.text_input("Username", key="p_user")
-            password = st.text_input("Password", key="p_password", type="password")
-            cfg = {"name": conn_name, "db_type": "postgresql",
-                   "host": host, "port": port, "database": database,
-                   "user": user, "password": password}
+            host=st.text_input("Host",key="p_host"); port=st.text_input("Port",key="p_port",value="5432")
+            database=st.text_input("Database",key="p_database"); user=st.text_input("Username",key="p_user")
+            password=st.text_input("Password",key="p_password",type="password")
+            cfg={"name":conn_name,"db_type":"postgresql","host":host,"port":port,
+                 "database":database,"user":user,"password":password}
         else:
-            account   = st.text_input("Account", key="p_account", value="dbcitil-nc64603")
-            user      = st.text_input("Username", key="p_sf_user")
-            password  = st.text_input("Password", key="p_sf_pwd", type="password")
-            warehouse = st.text_input("Warehouse", key="p_warehouse", value="COMPUTE_WH")
-            database  = st.text_input("Database", key="p_sf_db")
-            schema    = st.text_input("Schema", key="p_schema", value="PUBLIC")
-            role      = st.text_input("Role", key="p_role")
-            cfg = {"name": conn_name, "db_type": "snowflake",
-                   "account": account, "user": user, "password": password,
-                   "warehouse": warehouse, "database": database,
-                   "schema": schema, "role": role}
-        col1, col2 = st.columns(2)
+            account=st.text_input("Account",key="p_account",value="dbcitil-nc64603")
+            user=st.text_input("Username",key="p_sf_user"); password=st.text_input("Password",key="p_sf_pwd",type="password")
+            warehouse=st.text_input("Warehouse",key="p_warehouse",value="COMPUTE_WH")
+            database=st.text_input("Database",key="p_sf_db"); schema=st.text_input("Schema",key="p_schema",value="PUBLIC")
+            role=st.text_input("Role",key="p_role")
+            cfg={"name":conn_name,"db_type":"snowflake","account":account,"user":user,
+                 "password":password,"warehouse":warehouse,"database":database,"schema":schema,"role":role}
+        col1,col2=st.columns(2)
         with col1:
-            if st.button("⚡ Connect Now", use_container_width=True):
-                ok, msg = test_connection(cfg)
+            if st.button("⚡ Connect Now",use_container_width=True):
+                ok,msg=test_connection(cfg)
                 if ok:
-                    st.session_state.db_connected = True
-                    st.session_state.db_config    = cfg
-                    st.session_state.show_popup   = False
-                    st.rerun()
-                else:
-                    st.error(msg)
+                    st.session_state.db_connected=True; st.session_state.db_config=cfg
+                    st.session_state.show_popup=False; st.rerun()
+                else: st.error(msg)
         with col2:
-            if st.button("💾 Save", use_container_width=True):
-                if conn_name.strip():
-                    save_connection(cfg)
-                    st.success("Saved!")
-                else:
-                    st.warning("Enter a connection name first.")
+            if st.button("💾 Save",use_container_width=True):
+                if conn_name.strip(): save_connection(cfg); st.success("Saved!")
+                else: st.warning("Enter name first.")
     with tab2:
-        saved = load_connections()
-        if not saved:
-            st.info("No saved connections.")
+        saved=load_connections()
+        if not saved: st.info("No saved connections.")
         else:
-            names = [x["name"] for x in saved]
-            sel   = st.selectbox("Select", names, key="p_sel")
-            row   = next(x for x in saved if x["name"] == sel)
-            for k, v in row.items():
-                if k not in ("password", "name"):
-                    st.markdown(f"**{k}:** `{v}`")
-            if st.button("✅ Use This Connection", use_container_width=True):
-                ok, msg = test_connection(row)
+            names=[x["name"] for x in saved]; sel=st.selectbox("Select",names,key="p_sel")
+            row=next(x for x in saved if x["name"]==sel)
+            for k,v in row.items():
+                if k not in ("password","name"): st.markdown(f"**{k}:** `{v}`")
+            if st.button("✅ Use This Connection",use_container_width=True):
+                ok,msg=test_connection(row)
                 if ok:
-                    st.session_state.db_connected = True
-                    st.session_state.db_config    = row
-                    st.session_state.show_popup   = False
-                    st.rerun()
-                else:
-                    st.error(msg)
+                    st.session_state.db_connected=True; st.session_state.db_config=row
+                    st.session_state.show_popup=False; st.rerun()
+                else: st.error(msg)
 
 if st.session_state.show_popup:
     db_popup()
 
 
+# ── Sidebar ────────────────────────────────────────────────
 with st.sidebar:
-    role  = st.session_state.get("user_role", "viewer")
-    uname = st.session_state.get("user_name", "User")
+    role  = st.session_state.get("user_role","viewer")
+    uname = st.session_state.get("user_name","User")
     st.markdown(
         f'👤 **{uname}** &nbsp;'
         f'<span class="role-badge role-{role}">{role.upper()}</span>',
         unsafe_allow_html=True)
-    if st.button("🚪 Logout", use_container_width=True):
+    if st.button("🚪 Logout",use_container_width=True):
         logout(); st.rerun()
     st.divider()
+
     st.markdown("### 💡 Suggested Questions")
     st.caption("Click → edit → Run Analysis")
-    for i, s in enumerate([
+    for i,s in enumerate([
         "Show top 10 customers by total revenue",
         "Monthly revenue trend for latest year",
         "Which product category has highest sales",
@@ -238,39 +227,37 @@ with st.sidebar:
         "Customers not ordered in 90 days",
         "Total revenue by month for all years",
     ]):
-        if st.button(s, key=f"sug_{i}", use_container_width=True):
-            st.session_state.pending_text = s
-            st.rerun()
+        if st.button(s,key=f"sug_{i}",use_container_width=True):
+            st.session_state.pending_text=s; st.rerun()
+
     st.divider()
     st.markdown("### 🗄️ Active Connection")
     if st.session_state.db_connected:
-        cfg = st.session_state.db_config
+        cfg=st.session_state.db_config
         st.success(f"**{cfg.get('name','—')}**\n\n`{cfg.get('db_type','').upper()}`")
-        if st.button("🔌 Disconnect", use_container_width=True):
-            st.session_state.db_connected = False
-            st.session_state.db_config    = {}
-            st.rerun()
+        if st.button("🔌 Disconnect",use_container_width=True):
+            st.session_state.db_connected=False; st.session_state.db_config={}; st.rerun()
     else:
         st.warning("No database connected")
+
     if st.session_state.memory_on and st.session_state.history_pairs:
         st.divider()
         st.markdown("### 🧠 Conversation History")
-        pairs = st.session_state.history_pairs
-        for idx, pair in enumerate(reversed(pairs)):
-            ri    = len(pairs) - 1 - idx
-            label = pair['q'][:45] + ("…" if len(pair['q']) > 45 else "")
+        pairs=st.session_state.history_pairs
+        st.caption(f"{len(pairs)} exchange(s)")
+        for idx,pair in enumerate(reversed(pairs)):
+            ri=len(pairs)-1-idx
+            label=pair['q'][:45]+("…" if len(pair['q'])>45 else "")
             with st.expander(f"#{ri+1} — {label}"):
                 st.markdown(f"**You:** {pair['q']}")
                 st.markdown(f"**Result:** {pair['a']}")
-                if st.button("↩ Re-load", key=f"hist_{ri}", use_container_width=True):
-                    st.session_state.pending_text = pair['q']
-                    st.rerun()
-        if st.button("🗑️ Clear History", use_container_width=True):
-            st.session_state.history       = []
-            st.session_state.history_pairs = []
-            st.rerun()
+                if st.button("↩ Re-load",key=f"hist_{ri}",use_container_width=True):
+                    st.session_state.pending_text=pair['q']; st.rerun()
+        if st.button("🗑️ Clear History",use_container_width=True):
+            st.session_state.history=[]; st.session_state.history_pairs=[]; st.rerun()
 
 
+# ── Query box ──────────────────────────────────────────────
 query = st.text_area(
     "💬 Ask your business question",
     height=110,
@@ -279,8 +266,8 @@ query = st.text_area(
 )
 run_clicked = st.button("🚀 Run Analysis", type="primary")
 
-if run_clicked and not st.session_state.get("permissions", {}).get("can_run_query", True):
-    st.warning("🔒 Your role does not have permission to run queries.")
+if run_clicked and not st.session_state.get("permissions",{}).get("can_run_query",True):
+    st.warning("🔒 Your role cannot run queries.")
     run_clicked = False
 
 
@@ -290,15 +277,12 @@ if run_clicked:
     active_query = query.strip()
 
     if not active_query:
-        st.warning("⚠️ Please enter a question.")
-        st.stop()
+        st.warning("⚠️ Please enter a question."); st.stop()
     if not st.session_state.db_connected:
-        st.error("❌ Connect to a database first.")
-        st.stop()
+        st.error("❌ Connect to a database first."); st.stop()
 
     if st.session_state.memory_on and st.session_state.history:
-        recent   = clean_messages_for_openai(st.session_state.history)
-        messages = recent + [HumanMessage(content=active_query)]
+        messages = clean_history(st.session_state.history) + [HumanMessage(content=active_query)]
     else:
         messages = [HumanMessage(content=active_query)]
 
@@ -308,40 +292,30 @@ if run_clicked:
         with st.spinner("🤖 Running Agents… (Analyst → Expert → Reviewer)"):
             result = app.invoke({"messages": messages, "step": 0})
 
-        # ============================================================
-        # TEMP DEBUG — shows every message so we can see what failed
-        # ============================================================
-        with st.expander("🔍 DEBUG — Agent Messages (remove after fixing)", expanded=True):
-            all_msgs = result.get("messages", [])
-            st.write(f"Total messages: {len(all_msgs)}")
-            for i, msg in enumerate(all_msgs):
-                msg_type    = type(msg).__name__
-                msg_content = str(getattr(msg, "content", ""))
-                tool_calls  = getattr(msg, "tool_calls", None)
-                st.markdown(f"**Message {i+1} — `{msg_type}`**")
-                if tool_calls:
-                    st.warning(f"Tool calls: {tool_calls}")
-                st.code(msg_content[:500] if msg_content else "(empty)", language="text")
-                st.divider()
-        # ============================================================
-
+        # Extract final AI response
         final = ""
         for msg in reversed(result.get("messages", [])):
             if getattr(msg, "type", "") == "ai":
-                content = getattr(msg, "content", "")
-                if content and content.strip():
-                    final = content
+                c = getattr(msg, "content", "")
+                if c and str(c).strip():
+                    final = str(c).strip()
                     break
 
     except Exception as e:
-        st.error(f"⚠️ FULL ERROR: {str(e)}")
-        import traceback
-        st.code(traceback.format_exc(), language="text")
+        err = str(e).lower()
+        if "rate" in err or "429" in err:
+            st.error("⚠️ **Rate limit hit.** Wait 60 seconds then try again. "
+                     "Or add credits at platform.openai.com → Billing.")
+        elif "badrequest" in err or "400" in err:
+            st.session_state.history = []
+            st.session_state.history_pairs = []
+            st.error("⚠️ **Request error.** History cleared — please try again.")
+        else:
+            st.error(f"⚠️ Error: {str(e)[:300]}")
         st.stop()
 
     if not final:
-        st.warning("⚠️ No response received. Please try again.")
-        st.stop()
+        st.warning("⚠️ No response received. Please try again."); st.stop()
 
     st.session_state.last_response  = final
     st.session_state.last_run_query = active_query
@@ -352,10 +326,7 @@ if run_clicked:
     st.session_state.last_parsed = parsed
 
     if parsed.get("type") == "table":
-        raw_df = pd.DataFrame(
-            parsed.get("data", []),
-            columns=parsed.get("columns", [])
-        )
+        raw_df = pd.DataFrame(parsed.get("data",[]), columns=parsed.get("columns",[]))
         st.session_state.last_df  = raw_df
         st.session_state.chart_df = make_chart_df(raw_df)
     else:
@@ -366,8 +337,8 @@ if run_clicked:
         st.session_state.followups = get_followup_questions(active_query)
     except Exception:
         st.session_state.followups = [
-            "Show top 5 by revenue", "Show monthly trend",
-            "Compare this year vs last year", "Show bottom 5 performers",
+            "Show top 5 by revenue","Show monthly trend",
+            "Compare this year vs last year","Show bottom 5 performers",
         ]
 
     if st.session_state.memory_on:
@@ -380,12 +351,11 @@ if run_clicked:
             if parsed.get("type") == "text":
                 a_text = parsed.get("content", final)[:150]
             else:
-                cols   = parsed.get("columns", [])
-                rows   = parsed.get("data",    [])
-                a_text = f"{len(rows)} rows — {', '.join(cols[:3])}"
-        st.session_state.history_pairs.append({"q": active_query, "a": a_text})
-        if len(st.session_state.history_pairs) > 8:
-            st.session_state.history_pairs = st.session_state.history_pairs[-8:]
+                cols=parsed.get("columns",[]); rows=parsed.get("data",[])
+                a_text=f"{len(rows)} rows — {', '.join(cols[:3])}"
+        st.session_state.history_pairs.append({"q":active_query,"a":a_text})
+        if len(st.session_state.history_pairs)>8:
+            st.session_state.history_pairs=st.session_state.history_pairs[-8:]
 
 
 # ── KPI Cards ──────────────────────────────────────────────
@@ -395,7 +365,7 @@ if parsed and isinstance(parsed, dict):
     if kpis:
         st.subheader("📌 Key Metrics")
         kpi_cols = st.columns(len(kpis))
-        for i, kpi in enumerate(kpis):
+        for i,kpi in enumerate(kpis):
             with kpi_cols[i]:
                 st.markdown(
                     f'<div class="kpi-card">'
@@ -412,9 +382,9 @@ if parsed and isinstance(parsed, dict) and parsed.get("summary"):
 if st.session_state.last_df is not None:
     st.subheader("📊 Structured Result")
     st.dataframe(st.session_state.last_df, use_container_width=True)
-    if st.session_state.get("permissions", {}).get("can_download", True):
+    if st.session_state.get("permissions",{}).get("can_download",True):
         csv = st.session_state.last_df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download CSV", data=csv,
+        st.download_button("📥 Download CSV (Power BI)", data=csv,
                            file_name="insight_data.csv", mime="text/csv")
 
 
@@ -425,100 +395,88 @@ if st.session_state.chart_df is not None:
     all_cols = cdf.columns.tolist()
 
     if not num_cols and all_cols:
-        last_col = all_cols[-1]
-        cdf[last_col] = pd.to_numeric(
-            cdf[last_col].astype(str).str.replace(",","",regex=False).str.strip(),
+        lc = all_cols[-1]
+        cdf[lc] = pd.to_numeric(
+            cdf[lc].astype(str).str.replace(",","",regex=False).str.strip(),
             errors="coerce")
         st.session_state.chart_df = cdf
         num_cols = cdf.select_dtypes(include="number").columns.tolist()
 
     if num_cols:
         st.subheader("📈 Interactive Visualization")
-        vc1, vc2, vc3 = st.columns(3)
+        vc1,vc2,vc3 = st.columns(3)
         with vc1:
-            chart_type = st.selectbox(
-                "Chart Type",
+            chart_type = st.selectbox("Chart Type",
                 ["Bar","Horizontal Bar","Line","Area","Pie","Donut","Treemap","Scatter"],
                 key="viz_chart_type")
         with vc2:
-            val_col = st.selectbox("Value (metric)", num_cols,
-                                   index=len(num_cols)-1, key="viz_value_col")
+            val_col = st.selectbox("Value",num_cols,index=len(num_cols)-1,key="viz_value_col")
         with vc3:
-            lbl_options = [c for c in all_cols if c != val_col] or all_cols
-            lbl_col     = st.selectbox("Label / Group", lbl_options, key="viz_label_col")
+            lbl_options=[c for c in all_cols if c!=val_col] or all_cols
+            lbl_col=st.selectbox("Label/Group",lbl_options,key="viz_label_col")
 
-        title = f"{val_col} by {lbl_col}"
-        fig   = None
-        if   chart_type == "Bar":
-            fig = px.bar(cdf, x=lbl_col, y=val_col, color=val_col,
-                         color_continuous_scale="Blues", title=title, text_auto=True)
-        elif chart_type == "Horizontal Bar":
-            fig = px.bar(cdf, x=val_col, y=lbl_col, orientation="h", color=val_col,
-                         color_continuous_scale="Teal", title=title, text_auto=True)
-        elif chart_type == "Line":
-            fig = px.line(cdf, x=lbl_col, y=val_col, markers=True, title=title)
-        elif chart_type == "Area":
-            fig = px.area(cdf, x=lbl_col, y=val_col, title=title)
-        elif chart_type == "Pie":
-            fig = px.pie(cdf, names=lbl_col, values=val_col, title=title)
-        elif chart_type == "Donut":
-            fig = px.pie(cdf, names=lbl_col, values=val_col, hole=0.45, title=title)
-        elif chart_type == "Treemap":
-            fig = px.treemap(cdf, path=[lbl_col], values=val_col, title=title)
-        elif chart_type == "Scatter":
-            fig = px.scatter(cdf, x=lbl_col, y=val_col, color=val_col,
-                             color_continuous_scale="Blues", title=title)
+        title=f"{val_col} by {lbl_col}"; fig=None
+        if   chart_type=="Bar":
+            fig=px.bar(cdf,x=lbl_col,y=val_col,color=val_col,color_continuous_scale="Blues",title=title,text_auto=True)
+        elif chart_type=="Horizontal Bar":
+            fig=px.bar(cdf,x=val_col,y=lbl_col,orientation="h",color=val_col,color_continuous_scale="Teal",title=title,text_auto=True)
+        elif chart_type=="Line":
+            fig=px.line(cdf,x=lbl_col,y=val_col,markers=True,title=title)
+        elif chart_type=="Area":
+            fig=px.area(cdf,x=lbl_col,y=val_col,title=title)
+        elif chart_type=="Pie":
+            fig=px.pie(cdf,names=lbl_col,values=val_col,title=title)
+        elif chart_type=="Donut":
+            fig=px.pie(cdf,names=lbl_col,values=val_col,hole=0.45,title=title)
+        elif chart_type=="Treemap":
+            fig=px.treemap(cdf,path=[lbl_col],values=val_col,title=title)
+        elif chart_type=="Scatter":
+            fig=px.scatter(cdf,x=lbl_col,y=val_col,color=val_col,color_continuous_scale="Blues",title=title)
+
         if fig:
             fig.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(10,10,30,0.6)",
                 font_color="white", title_font_color="#48cae4",
                 legend=dict(bgcolor="rgba(0,0,0,0)"),
-                margin=dict(l=20, r=20, t=50, b=20))
+                margin=dict(l=20,r=20,t=50,b=20))
             fig.update_xaxes(gridcolor="rgba(255,255,255,0.08)")
             fig.update_yaxes(gridcolor="rgba(255,255,255,0.08)")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig,use_container_width=True)
             try:
-                fig.write_image("chart_export.png", width=900, height=500, scale=2)
-                st.session_state.chart_path = "chart_export.png"
+                fig.write_image("chart_export.png",width=900,height=500,scale=2)
+                st.session_state.chart_path="chart_export.png"
             except Exception:
                 pass
-    else:
-        st.caption("ℹ️ No numeric columns found for visualization.")
 
 
 # ── Text result ────────────────────────────────────────────
-if (st.session_state.last_response
-        and st.session_state.last_df is None
-        and parsed and isinstance(parsed, dict)
-        and parsed.get("type") == "text"):
+if (st.session_state.last_response and st.session_state.last_df is None
+        and parsed and isinstance(parsed,dict) and parsed.get("type")=="text"):
     st.subheader("💬 Analysis Result")
-    st.markdown(parsed.get("content", st.session_state.last_response))
+    st.markdown(parsed.get("content",st.session_state.last_response))
 
 
 # ── Follow-up questions ────────────────────────────────────
 if st.session_state.followups:
     st.subheader("🔁 Follow-up Questions")
     st.caption("Click to load → edit → **Run Analysis**")
-    fcols = st.columns(2)
-    for i, q in enumerate(st.session_state.followups):
-        with fcols[i % 2]:
-            if st.button(q, key=f"fq_{i}", use_container_width=True):
-                st.session_state.pending_text = q
-                st.rerun()
+    fcols=st.columns(2)
+    for i,q in enumerate(st.session_state.followups):
+        with fcols[i%2]:
+            if st.button(q,key=f"fq_{i}",use_container_width=True):
+                st.session_state.pending_text=q; st.rerun()
 
 
 # ── PDF download ───────────────────────────────────────────
 if st.session_state.last_response and st.session_state.last_parsed:
-    p = st.session_state.last_parsed
-    if (p.get("type") in ("table", "text")
-            and st.session_state.get("permissions", {}).get("can_download", True)):
+    p=st.session_state.last_parsed
+    if (p.get("type") in ("table","text")
+            and st.session_state.get("permissions",{}).get("can_download",True)):
         try:
-            pdf_file = create_pdf(
-                p, st.session_state.last_run_query or "",
-                chart_path=st.session_state.get("chart_path"))
-            with open(pdf_file, "rb") as f:
-                st.download_button("📄 Download Report (PDF)", data=f,
-                                   file_name="Insight_Report.pdf",
-                                   mime="application/pdf")
+            pdf_file=create_pdf(p,st.session_state.last_run_query or "",
+                                chart_path=st.session_state.get("chart_path"))
+            with open(pdf_file,"rb") as f:
+                st.download_button("📄 Download Report (PDF)",data=f,
+                                   file_name="Insight_Report.pdf",mime="application/pdf")
         except Exception as e:
             st.caption(f"PDF note: {e}")
