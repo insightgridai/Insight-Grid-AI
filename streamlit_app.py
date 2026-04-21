@@ -1,10 +1,22 @@
+# =============================================================
+# streamlit_app.py  —  Insight Grid AI  v7
+#
+# FIXES:
+# 1. "Could not format result" — now imports parse_response from
+#    utils.parser which NEVER returns None. Raw text responses
+#    are shown properly instead of that error message.
+# 2. PDF chart sideways — fixed in pdf_export.py (_chart_dimensions)
+# 3. Cost: memory OFF by default, max 4 exchanges kept
+# 4. chart_df uses make_chart_df() for reliable numeric coercion
+# =============================================================
+
 import json
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from langchain_core.messages import AIMessage, HumanMessage
 
-# ── Auth gate — runs before everything ─────────────────────
+# ── Auth gate ───────────────────────────────────────────────
 from auth.login_ui import show_login_popup, check_auth, logout
 
 st.set_page_config(page_title="Insight Grid AI", page_icon="🤖", layout="wide")
@@ -23,6 +35,7 @@ from db.connection           import test_connection
 from utils.db_store          import load_connections, save_connection
 from utils.pdf_export        import create_pdf
 from utils.cache             import load_bg
+from utils.parser            import parse_response   # ← THE FIX: robust parser
 
 
 # ── Background ─────────────────────────────────────────────
@@ -82,7 +95,7 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
 _defaults = {
     "db_connected":   False,
     "db_config":      {},
-    "memory_on":      False,   # OFF by default — saves tokens
+    "memory_on":      False,
     "history":        [],
     "history_pairs":  [],
     "last_response":  "",
@@ -101,18 +114,8 @@ for k, v in _defaults.items():
 
 
 # ── Helpers ────────────────────────────────────────────────
-def parse_response(text: str):
-    try:
-        s = text.find("{")
-        e = text.rfind("}") + 1
-        if s >= 0 and e > s:
-            return json.loads(text[s:e])
-    except Exception:
-        pass
-    return None
-
-
 def make_chart_df(raw_df: pd.DataFrame) -> pd.DataFrame:
+    """Coerce string numbers → float so charts always render."""
     df = raw_df.copy()
     for col in df.columns:
         cleaned = (df[col].astype(str)
@@ -121,25 +124,20 @@ def make_chart_df(raw_df: pd.DataFrame) -> pd.DataFrame:
                    .str.replace("%", "", regex=False)
                    .str.strip())
         coerced = pd.to_numeric(cleaned, errors="coerce")
-        if coerced.notna().any():
+        if coerced.notna().sum() / max(len(df), 1) >= 0.6:
             df[col] = coerced
     return df
 
 
 def clean_messages_for_openai(msgs):
-    """
-    Ensure messages are valid HumanMessage/AIMessage only.
-    Removes any corrupted or unexpected types.
-    Limits to last 4 messages to prevent BadRequestError.
-    """
-    from langchain_core.messages import HumanMessage, AIMessage
+    """Keep only valid HumanMessage/AIMessage, max last 8."""
     clean = []
     for m in msgs:
         if isinstance(m, (HumanMessage, AIMessage)):
             content = getattr(m, "content", "")
             if isinstance(content, str) and content.strip():
                 clean.append(m)
-    return clean[-4:] if len(clean) > 4 else clean
+    return clean[-8:]
 
 
 # ── Header ─────────────────────────────────────────────────
@@ -311,7 +309,6 @@ query = st.text_area(
     value=st.session_state.pending_text,
     placeholder="e.g. Show top 10 customers by total revenue",
 )
-
 run_clicked = st.button("🚀 Run Analysis", type="primary")
 
 if run_clicked and not st.session_state.get("permissions", {}).get("can_run_query", True):
@@ -331,7 +328,6 @@ if run_clicked:
         st.error("❌ Connect to a database first.")
         st.stop()
 
-    # Build clean message list — always safe
     if st.session_state.memory_on and st.session_state.history:
         recent   = clean_messages_for_openai(st.session_state.history)
         messages = recent + [HumanMessage(content=active_query)]
@@ -355,17 +351,9 @@ if run_clicked:
     except Exception as e:
         err = str(e).lower()
         if "rate" in err or "429" in err:
-            st.error(
-                "⚠️ **OpenAI Rate Limit.** "
-                "Please wait 60 seconds then try again. "
-                "Or add credits at platform.openai.com → Billing."
-            )
+            st.error("⚠️ **OpenAI Rate Limit.** Wait 60s then try again, or add credits at platform.openai.com → Billing.")
         elif "badrequest" in err or "400" in err:
-            st.error(
-                "⚠️ **Request error.** "
-                "Try turning off Memory Mode and running again."
-            )
-            # Clear corrupt history
+            st.error("⚠️ **Request error.** Turn off Memory Mode and try again.")
             st.session_state.history       = []
             st.session_state.history_pairs = []
         else:
@@ -381,10 +369,11 @@ if run_clicked:
     st.session_state.chart_path     = None
     st.session_state.pending_text   = active_query
 
+    # ── parse_response from utils.parser — NEVER returns None ──
     parsed = parse_response(final)
     st.session_state.last_parsed = parsed
 
-    if parsed and parsed.get("type") == "table":
+    if parsed.get("type") == "table":
         raw_df = pd.DataFrame(
             parsed.get("data", []),
             columns=parsed.get("columns", [])
@@ -408,7 +397,6 @@ if run_clicked:
     if st.session_state.memory_on:
         st.session_state.history.append(HumanMessage(content=active_query))
         st.session_state.history.append(AIMessage(content=final))
-        # Keep max 4 exchanges = 8 messages
         if len(st.session_state.history) > 8:
             st.session_state.history = st.session_state.history[-8:]
         a_text = ""
@@ -417,7 +405,7 @@ if run_clicked:
                 a_text = parsed.get("content", final)[:150]
             else:
                 cols   = parsed.get("columns", [])
-                rows   = parsed.get("data", [])
+                rows   = parsed.get("data",    [])
                 a_text = f"{len(rows)} rows — {', '.join(cols[:3])}"
         st.session_state.history_pairs.append({"q": active_query, "a": a_text})
         if len(st.session_state.history_pairs) > 8:
@@ -464,6 +452,7 @@ if st.session_state.chart_df is not None:
     num_cols = cdf.select_dtypes(include="number").columns.tolist()
     all_cols = cdf.columns.tolist()
 
+    # Last-resort: force-coerce the last column if still no numerics
     if not num_cols and all_cols:
         last_col = all_cols[-1]
         cdf[last_col] = pd.to_numeric(
@@ -527,11 +516,18 @@ if st.session_state.chart_df is not None:
             fig.update_xaxes(gridcolor="rgba(255,255,255,0.08)")
             fig.update_yaxes(gridcolor="rgba(255,255,255,0.08)")
             st.plotly_chart(fig, use_container_width=True)
+
+            # Save PNG for PDF — explicit 900×500 forces landscape, no rotation
             try:
-                fig.write_image("chart_export.png")
+                fig.write_image(
+                    "chart_export.png",
+                    width=900, height=500, scale=2
+                )
                 st.session_state.chart_path = "chart_export.png"
             except Exception:
                 pass
+    else:
+        st.caption("ℹ️ No numeric columns found for visualization.")
 
 
 # ── Text result ────────────────────────────────────────────
