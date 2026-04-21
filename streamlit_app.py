@@ -338,15 +338,6 @@ if st.session_state.last_df is not None:
     st.subheader("📊 Structured Result")
     st.dataframe(st.session_state.last_df, use_container_width=True)
 
-    # CSV download — one click, ready to upload to Power BI
-    csv_data = st.session_state.last_df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Download CSV (for Power BI)",
-        data=csv_data,
-        file_name="insight_data.csv",
-        mime="text/csv",
-    )
-
 
 # ── Visualization ──────────────────────────────────────────
 # Uses chart_df where all possible columns are already numeric.
