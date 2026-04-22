@@ -46,7 +46,10 @@ def get_expert_app(db_config: dict):
             "2. Write SQL with LIMIT 50.\n"
             "3. Call execute_sql once.\n"
             "4. Return ONLY the raw result. No explanation.\n"
-            "Use UPPERCASE names. CURRENT_DATE()."
+            "Use UPPERCASE names. CURRENT_DATE().\n"
+            "For metadata/schema/structure queries: query INFORMATION_SCHEMA.COLUMNS "
+            "and INFORMATION_SCHEMA.TABLE_CONSTRAINTS to compare columns, "
+            "data types, primary keys, and foreign keys between tables."
         )
     else:
         prompt = (
@@ -55,7 +58,12 @@ def get_expert_app(db_config: dict):
             "2. Write SQL with LIMIT 50.\n"
             "3. Call execute_sql once.\n"
             "4. Return ONLY the raw result. No explanation.\n"
-            "Use lowercase names. CURRENT_DATE."
+            "Use lowercase names. CURRENT_DATE.\n"
+            "For metadata/schema/structure/comparison queries: query "
+            "information_schema.columns for column names, data types, "
+            "and nullable; query information_schema.table_constraints and "
+            "information_schema.key_column_usage for primary keys and foreign keys. "
+            "Compare the two tables side by side. Do NOT query business data tables."
         )
 
     sm = [SystemMessage(content=prompt)]
@@ -64,7 +72,6 @@ def get_expert_app(db_config: dict):
         msgs = state["messages"]
         tool_calls = sum(1 for m in msgs if getattr(m, "tool_calls", None))
         if tool_calls >= 3:
-            # Hard stop — return clean text
             return {"messages": [AIMessage(content=_extract_result(msgs))]}
         safe = msgs[-6:] if len(msgs) > 6 else msgs
         return {"messages": [tool_llm.invoke(sm + safe)]}
