@@ -28,22 +28,40 @@ def _extract_result(msgs) -> str:
     return "No data returned."
 
 
-def _safe_messages(msgs):
+def _build_safe_messages(msgs):
     """
-    FIX: Ensure tool messages always follow an AI message with tool_calls.
-    Remove any orphaned ToolMessages that don't have a matching tool_call
-    before them — this prevents the 'tool must follow tool_calls' API error.
+    Build a valid message sequence for OpenAI.
+    Rules OpenAI enforces:
+    - Every ToolMessage must immediately follow an AIMessage that has tool_calls
+    - An AIMessage with tool_calls must be followed by ToolMessages (one per call)
+    - No orphaned ToolMessages allowed
+
+    Strategy: walk through messages and only keep valid pairs.
+    Any ToolMessage without a matching preceding AI tool_call is dropped.
     """
-    safe = []
-    for m in msgs:
+    result = []
+    i = 0
+    while i < len(msgs):
+        m = msgs[i]
         if isinstance(m, ToolMessage):
-            # Only keep ToolMessage if last message in safe has tool_calls
-            if safe and isinstance(safe[-1], AIMessage) and getattr(safe[-1], "tool_calls", None):
-                safe.append(m)
-            # Otherwise skip the orphaned ToolMessage
+            # Orphaned ToolMessage — skip it
+            i += 1
+            continue
+        elif isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+            # AI message with tool calls — include it and all following ToolMessages
+            result.append(m)
+            i += 1
+            tool_call_ids = {tc["id"] for tc in m.tool_calls if "id" in tc}
+            while i < len(msgs) and isinstance(msgs[i], ToolMessage):
+                tm = msgs[i]
+                # Only include if tool_call_id matches
+                if getattr(tm, "tool_call_id", None) in tool_call_ids:
+                    result.append(tm)
+                i += 1
         else:
-            safe.append(m)
-    return safe
+            result.append(m)
+            i += 1
+    return result
 
 
 def get_expert_app(db_config: dict):
@@ -61,27 +79,28 @@ def get_expert_app(db_config: dict):
         prompt = (
             "You are a Snowflake SQL expert.\n"
             "1. Call get_schema once.\n"
-            "2. Write SQL with LIMIT 50.\n"
+            "2. Write ONE SQL query with LIMIT 50.\n"
             "3. Call execute_sql once.\n"
             "4. Return ONLY the raw result. No explanation.\n"
             "Use UPPERCASE names. CURRENT_DATE().\n"
             "For metadata/schema/structure queries: query INFORMATION_SCHEMA.COLUMNS "
             "and INFORMATION_SCHEMA.TABLE_CONSTRAINTS to compare columns, "
-            "data types, primary keys, and foreign keys between tables."
+            "data types, primary keys, and foreign keys between tables. "
+            "Do this in ONE single SQL query using UNION or JOIN."
         )
     else:
         prompt = (
             "You are a PostgreSQL expert.\n"
             "1. Call get_schema once.\n"
-            "2. Write SQL with LIMIT 50.\n"
+            "2. Write ONE SQL query with LIMIT 100.\n"
             "3. Call execute_sql once.\n"
             "4. Return ONLY the raw result. No explanation.\n"
             "Use lowercase names. CURRENT_DATE.\n"
-            "For metadata/schema/structure/comparison queries: query "
-            "information_schema.columns for column names, data types, "
-            "and nullable; query information_schema.table_constraints and "
-            "information_schema.key_column_usage for primary keys and foreign keys. "
-            "Compare the two tables side by side. Do NOT query business data tables."
+            "For metadata/schema/structure/comparison/similarity queries: "
+            "write ONE single SQL query that compares both tables using "
+            "information_schema.columns. Use a JOIN or UNION to find common columns, "
+            "data types, and key differences in a single execute_sql call. "
+            "Never make more than one execute_sql call."
         )
 
     sm = [SystemMessage(content=prompt)]
@@ -91,8 +110,8 @@ def get_expert_app(db_config: dict):
         tool_calls = sum(1 for m in msgs if getattr(m, "tool_calls", None))
         if tool_calls >= 3:
             return {"messages": [AIMessage(content=_extract_result(msgs))]}
-        # KEY FIX: sanitise message order before sending to OpenAI
-        safe = _safe_messages(msgs[-6:] if len(msgs) > 6 else msgs)
+        # Build safe, validated message sequence
+        safe = _build_safe_messages(msgs[-8:] if len(msgs) > 8 else msgs)
         return {"messages": [tool_llm.invoke(sm + safe)]}
 
     graph = StateGraph(ExpertState)
