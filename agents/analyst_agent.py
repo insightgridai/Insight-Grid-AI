@@ -16,7 +16,13 @@ def get_analyst_app():
     system = SystemMessage(content=(
         "Rewrite the user query as a precise SQL request. "
         "Include: metric, table, grouping, sort order, limit. "
-        "One sentence only. No SQL code."
+        "One sentence only. No SQL code.\n\n"
+        "IMPORTANT: If the user asks about metadata, schema, structure, "
+        "data types, columns, relationships, keys, foreign keys, primary keys, "
+        "referential integrity, or table comparison — keep it as a metadata query. "
+        "Do NOT convert it to a business data query. "
+        "Instead describe it as: query information_schema to compare columns, "
+        "data types, constraints, and keys for the mentioned tables."
     ))
 
     def analyst(state: AnalystState):
