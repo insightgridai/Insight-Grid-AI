@@ -100,6 +100,59 @@ for k, v in _defaults.items():
         st.session_state[k] = v
 
 
+# ── Suggestions per DB type ─────────────────────────────────
+# PostgreSQL — E-Commerce (customer_dim, item_dim, sales_fact,
+#              store_dim, time_dim, trans_dim) — 2021 data
+POSTGRESQL_SUGGESTIONS = [
+    "Show top 10 customers by total revenue",
+    "Which product category has highest total sales",
+    "Show monthly revenue trend for 2021",
+    "Show bottom 5 performing products by revenue",
+    "Show total sales by payment type cash vs card",
+    "Which stores have highest sales in 2021",
+    "Show top 10 items by quantity sold",
+    "What is total revenue by month for all years",
+    "Show customer count by division",
+    "Which bank is used most for card payments",
+    "Show daily sales trend for January 2021",
+    "What are top 5 suppliers by total sales",
+    "Show revenue comparison by store district",
+    "Show average order value by store division",
+    "Which customers have made more than 5 orders",
+]
+
+# Snowflake — Oil & Gas (OIL_GAS_PRODUCTION) — 2025/2026 data
+# Fields: FIELD_ID, FIELD_NAME, WELL_ID, LOCATION, DATE,
+#         OIL_PRODUCTION_BBL, GAS_PRODUCTION_MCF,
+#         WATER_PRODUCTION_BBL, Water_Cut_%, API_GRAVITY, STATUS
+SNOWFLAKE_SUGGESTIONS = [
+    "Show total oil production by field for all time",
+    "What is total gas production by location type",
+    "Show top 10 wells by oil production BBL",
+    "Show monthly oil production trend for 2025",
+    "Compare onshore vs offshore vs deepwater production",
+    "Show total water production by field name",
+    "Which wells have status Producing right now",
+    "Show average API gravity by location",
+    "What is total oil production for year 2025",
+    "Show wells with highest water cut percentage",
+    "Compare oil production by field for 2025",
+    "Show count of wells by current status",
+    "What is average oil production per well",
+    "Show total production by month for Krishna Basin",
+    "Which wells had highest gas production in 2025",
+]
+
+
+def get_suggestions() -> list:
+    """Return 15 suggestions based on connected DB type."""
+    if st.session_state.db_connected:
+        db_type = st.session_state.db_config.get("db_type", "postgresql").lower()
+        if db_type == "snowflake":
+            return SNOWFLAKE_SUGGESTIONS
+    return POSTGRESQL_SUGGESTIONS
+
+
 # ── Helpers ────────────────────────────────────────────────
 def make_chart_df(raw_df: pd.DataFrame) -> pd.DataFrame:
     df = raw_df.copy()
@@ -215,20 +268,20 @@ with st.sidebar:
         logout(); st.rerun()
     st.divider()
 
-    st.markdown("### 💡 Suggested Questions")
+    # ── ONLY CHANGE: dynamic suggestions based on DB type ──
+    db_type_now = st.session_state.db_config.get("db_type","postgresql").lower() \
+                  if st.session_state.db_connected else "postgresql"
+    if db_type_now == "snowflake":
+        st.markdown("### 💡 Oil & Gas Questions")
+    else:
+        st.markdown("### 💡 E-Commerce Questions")
     st.caption("Click → edit → Run Analysis")
-    for i,s in enumerate([
-        "Show top 10 customers by total revenue",
-        "Monthly revenue trend for latest year",
-        "Which product category has highest sales",
-        "Show bottom 5 performing products",
-        "Average order value by region",
-        "Compare revenue this year vs last year",
-        "Customers not ordered in 90 days",
-        "Total revenue by month for all years",
-    ]):
-        if st.button(s,key=f"sug_{i}",use_container_width=True):
-            st.session_state.pending_text=s; st.rerun()
+
+    for i, s in enumerate(get_suggestions()):
+        if st.button(s, key=f"sug_{i}", use_container_width=True):
+            st.session_state.pending_text = s
+            st.rerun()
+    # ── END OF CHANGE ──────────────────────────────────────
 
     st.divider()
     st.markdown("### 🗄️ Active Connection")
