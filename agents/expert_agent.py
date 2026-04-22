@@ -2,7 +2,7 @@ from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_core.messages import AnyMessage, SystemMessage, AIMessage, ToolMessage
+from langchain_core.messages import AnyMessage, SystemMessage, AIMessage, ToolMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from tools.get_schema  import get_schema_tool
 from tools.execute_sql import get_execute_sql_tool
@@ -26,6 +26,24 @@ def _extract_result(msgs) -> str:
             if c and not has_tools:
                 return c[:3000]
     return "No data returned."
+
+
+def _safe_messages(msgs):
+    """
+    FIX: Ensure tool messages always follow an AI message with tool_calls.
+    Remove any orphaned ToolMessages that don't have a matching tool_call
+    before them — this prevents the 'tool must follow tool_calls' API error.
+    """
+    safe = []
+    for m in msgs:
+        if isinstance(m, ToolMessage):
+            # Only keep ToolMessage if last message in safe has tool_calls
+            if safe and isinstance(safe[-1], AIMessage) and getattr(safe[-1], "tool_calls", None):
+                safe.append(m)
+            # Otherwise skip the orphaned ToolMessage
+        else:
+            safe.append(m)
+    return safe
 
 
 def get_expert_app(db_config: dict):
@@ -73,7 +91,8 @@ def get_expert_app(db_config: dict):
         tool_calls = sum(1 for m in msgs if getattr(m, "tool_calls", None))
         if tool_calls >= 3:
             return {"messages": [AIMessage(content=_extract_result(msgs))]}
-        safe = msgs[-6:] if len(msgs) > 6 else msgs
+        # KEY FIX: sanitise message order before sending to OpenAI
+        safe = _safe_messages(msgs[-6:] if len(msgs) > 6 else msgs)
         return {"messages": [tool_llm.invoke(sm + safe)]}
 
     graph = StateGraph(ExpertState)
