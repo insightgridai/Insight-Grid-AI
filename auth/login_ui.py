@@ -86,7 +86,7 @@ def show_login_popup():
                     "margin:0 0 16px 2px;'>Password</p>",
                     unsafe_allow_html=True)
 
-        login_btn = st.button("Sign In →", type="primary",
+        login_btn = st.button("Sign In →", type="secondary",
                               use_container_width=True, key="lg_btn")
 
         if login_btn:
