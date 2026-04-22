@@ -1,13 +1,4 @@
-# =============================================================
 # agents/supervisor_agent.py
-#
-# THE KEY FIX:
-# call_reviewer() extracts the CLEAN TEXT from expert output
-# and sends it as a FRESH HumanMessage to the reviewer.
-# The reviewer NEVER sees tool_calls, ToolMessages, or
-# AIMessages with tool_calls. This was the root cause of
-# "Could not format result."
-# =============================================================
 
 from typing import TypedDict, Annotated, Dict, Any
 from langchain_core.messages import (
@@ -43,19 +34,11 @@ def route_next(state: SupervisorState):
 
 
 def _extract_best_text(msgs) -> str:
-    """
-    Scan message list and return the best plain-text data result.
-    Priority order:
-      1. Last ToolMessage with real content  (execute_sql result)
-      2. Last plain AIMessage (no tool_calls)
-    """
-    # Priority 1: last ToolMessage
     for m in reversed(msgs):
         if isinstance(m, ToolMessage):
             c = str(getattr(m, "content", "") or "").strip()
             if c and c.lower() not in ("none", ""):
                 return c[:3000]
-    # Priority 2: last plain AIMessage
     for m in reversed(msgs):
         if isinstance(m, AIMessage):
             c = str(getattr(m, "content", "") or "").strip()
@@ -63,6 +46,14 @@ def _extract_best_text(msgs) -> str:
             if c and not has_tools:
                 return c[:3000]
     return "No data returned."
+
+
+def _get_last_human_text(msgs) -> str:
+    """Get the last human message content for retry."""
+    for m in reversed(msgs):
+        if isinstance(m, HumanMessage):
+            return str(getattr(m, "content", "") or "").strip()
+    return ""
 
 
 def call_analyst(state: SupervisorState):
@@ -75,29 +66,39 @@ def call_analyst(state: SupervisorState):
 
 def call_expert(state: SupervisorState):
     """
-    Run expert. After it finishes, extract the clean data text
-    and return it as a single plain AIMessage.
-    This ensures the supervisor message list stays clean.
+    Run expert. If tool message ordering error occurs,
+    retry with a single clean HumanMessage — this always works.
     """
     try:
-        r          = get_expert_app(state["db_config"]).invoke(
+        r = get_expert_app(state["db_config"]).invoke(
             {"messages": state["messages"]}
         )
         clean_text = _extract_best_text(r.get("messages", []))
         return {"messages": [AIMessage(content=clean_text)]}
+
     except Exception as e:
-        return {"messages": [AIMessage(content=f"Expert error: {str(e)[:200]}")]}
+        err = str(e).lower()
+        # Tool message ordering error — retry with clean single message
+        if "tool" in err or "missing" in err or "role" in err or "400" in err:
+            try:
+                # Get just the last human question and retry fresh
+                last_q = _get_last_human_text(state["messages"])
+                if not last_q:
+                    last_q = "Run the requested analysis."
+                r2 = get_expert_app(state["db_config"]).invoke(
+                    {"messages": [HumanMessage(content=last_q)]}
+                )
+                clean_text = _extract_best_text(r2.get("messages", []))
+                return {"messages": [AIMessage(content=clean_text)]}
+            except Exception as e2:
+                return {"messages": [AIMessage(content=f"Expert error: {str(e2)[:200]}")]}
+        else:
+            return {"messages": [AIMessage(content=f"Expert error: {str(e)[:200]}")]}
 
 
 def call_reviewer(state: SupervisorState):
-    """
-    Extract the last clean AIMessage content and send it as
-    a FRESH HumanMessage to the reviewer.
-    This guarantees reviewer never sees tool_calls or ToolMessages.
-    """
     try:
         msgs = state["messages"]
-        # Get the last plain AIMessage (expert's clean result)
         data_text = ""
         for m in reversed(msgs):
             if isinstance(m, AIMessage):
@@ -110,7 +111,6 @@ def call_reviewer(state: SupervisorState):
         if not data_text:
             data_text = "No data returned."
 
-        # Send ONLY this as a fresh HumanMessage — no history, no tool noise
         r = get_reviewer_app().invoke(
             {"messages": [HumanMessage(content=data_text)]}
         )
