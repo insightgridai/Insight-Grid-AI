@@ -101,8 +101,6 @@ for k, v in _defaults.items():
 
 
 # ── Suggestions per DB type ─────────────────────────────────
-# PostgreSQL — E-Commerce (customer_dim, item_dim, sales_fact,
-#              store_dim, time_dim, trans_dim) — 2021 data
 POSTGRESQL_SUGGESTIONS = [
     "Show top 10 customers by total revenue",
     "Which product category has highest total sales",
@@ -121,10 +119,6 @@ POSTGRESQL_SUGGESTIONS = [
     "Which customers have made more than 5 orders",
 ]
 
-# Snowflake — Oil & Gas (OIL_GAS_PRODUCTION) — 2025/2026 data
-# Fields: FIELD_ID, FIELD_NAME, WELL_ID, LOCATION, DATE,
-#         OIL_PRODUCTION_BBL, GAS_PRODUCTION_MCF,
-#         WATER_PRODUCTION_BBL, Water_Cut_%, API_GRAVITY, STATUS
 SNOWFLAKE_SUGGESTIONS = [
     "Show total oil production by field for all time",
     "What is total gas production by location type",
@@ -145,10 +139,8 @@ SNOWFLAKE_SUGGESTIONS = [
 
 
 def get_suggestions() -> list:
-    """Return 15 suggestions based on connected DB type."""
     if st.session_state.db_connected:
-        db_type = st.session_state.db_config.get("db_type", "postgresql").lower()
-        if db_type == "snowflake":
+        if st.session_state.db_config.get("db_type","postgresql").lower() == "snowflake":
             return SNOWFLAKE_SUGGESTIONS
     return POSTGRESQL_SUGGESTIONS
 
@@ -175,7 +167,7 @@ def clean_history(msgs):
             c = getattr(m, "content", "")
             if isinstance(c, str) and c.strip():
                 clean.append(m)
-    return clean[-4:]   # max 2 exchanges
+    return clean[-4:]
 
 
 # ── Header ─────────────────────────────────────────────────
@@ -268,7 +260,6 @@ with st.sidebar:
         logout(); st.rerun()
     st.divider()
 
-    # ── ONLY CHANGE: dynamic suggestions based on DB type ──
     db_type_now = st.session_state.db_config.get("db_type","postgresql").lower() \
                   if st.session_state.db_connected else "postgresql"
     if db_type_now == "snowflake":
@@ -281,7 +272,6 @@ with st.sidebar:
         if st.button(s, key=f"sug_{i}", use_container_width=True):
             st.session_state.pending_text = s
             st.rerun()
-    # ── END OF CHANGE ──────────────────────────────────────
 
     st.divider()
     st.markdown("### 🗄️ Active Connection")
@@ -345,7 +335,6 @@ if run_clicked:
         with st.spinner("🤖 Running Agents… (Analyst → Expert → Reviewer)"):
             result = app.invoke({"messages": messages, "step": 0})
 
-        # Extract final AI response
         final = ""
         for msg in reversed(result.get("messages", [])):
             if getattr(msg, "type", "") == "ai":
@@ -357,8 +346,7 @@ if run_clicked:
     except Exception as e:
         err = str(e).lower()
         if "rate" in err or "429" in err:
-            st.error("⚠️ **Rate limit hit.** Wait 60 seconds then try again. "
-                     "Or add credits at platform.openai.com → Billing.")
+            st.error("⚠️ **Rate limit hit.** Wait 60 seconds then try again.")
         elif "badrequest" in err or "400" in err:
             st.session_state.history = []
             st.session_state.history_pairs = []
@@ -386,13 +374,17 @@ if run_clicked:
         st.session_state.last_df  = None
         st.session_state.chart_df = None
 
+    # ── ONLY CHANGE: pass db_type to followup agent ────────
     try:
-        st.session_state.followups = get_followup_questions(active_query)
+        current_db_type = st.session_state.db_config.get("db_type", "postgresql").lower()
+        st.session_state.followups = get_followup_questions(active_query, db_type=current_db_type)
     except Exception:
         st.session_state.followups = [
-            "Show top 5 by revenue","Show monthly trend",
-            "Compare this year vs last year","Show bottom 5 performers",
+            "Show top 5 by revenue", "Show monthly trend",
+            "Compare this year vs last year", "Show bottom 5 performers",
+            "Show total count of records",
         ]
+    # ── END OF CHANGE ──────────────────────────────────────
 
     if st.session_state.memory_on:
         st.session_state.history.append(HumanMessage(content=active_query))
