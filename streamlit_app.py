@@ -1,6 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import json
+import io
+from fpdf import FPDF
 from langchain_core.messages import AIMessage, HumanMessage
 
 # ── Auth — runs before anything else ───────────────────────
@@ -74,26 +78,45 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
 .role-admin   {{ background:#0077b6; color:white; }}
 .role-analyst {{ background:#00b4d8; color:white; }}
 .role-viewer  {{ background:#48cae4; color:#0e0e1a; }}
+.anomaly-high {{ color:#ff6b6b; font-weight:700; }}
+.anomaly-low  {{ color:#ffd93d; font-weight:700; }}
+.confidence-bar {{
+    background:rgba(0,180,216,0.2); border-radius:8px;
+    padding:8px 14px; margin-bottom:8px;
+    border-left:4px solid #48cae4;
+}}
 </style>
 """, unsafe_allow_html=True)
 
 
 # ── Session state ──────────────────────────────────────────
 _defaults = {
-    "db_connected":   False,
-    "db_config":      {},
-    "memory_on":      False,
-    "history":        [],
-    "history_pairs":  [],
-    "last_response":  "",
-    "last_df":        None,
-    "chart_df":       None,
-    "last_parsed":    None,
-    "followups":      [],
-    "show_popup":     False,
-    "chart_path":     None,
-    "last_run_query": "",
-    "pending_text":   "",
+    "db_connected":       False,
+    "db_config":          {},
+    "memory_on":          False,
+    "history":            [],
+    "history_pairs":      [],
+    "last_response":      "",
+    "last_df":            None,
+    "chart_df":           None,
+    "last_parsed":        None,
+    "followups":          [],
+    "show_popup":         False,
+    "chart_path":         None,
+    "last_run_query":     "",
+    "pending_text":       "",
+    # NEW: for compare mode
+    "compare_mode":       False,
+    "compare_query1":     "",
+    "compare_query2":     "",
+    "compare_df1":        None,
+    "compare_df2":        None,
+    "compare_parsed1":    None,
+    "compare_parsed2":    None,
+    # NEW: session query log for history export
+    "query_log":          [],
+    # NEW: chart theme
+    "chart_theme":        "Dark",
 }
 for k, v in _defaults.items():
     if k not in st.session_state:
@@ -118,7 +141,6 @@ POSTGRESQL_SUGGESTIONS = [
     "Show average order value by store division",
     "Which customers have made more than 5 orders",
 ]
-
 SNOWFLAKE_SUGGESTIONS = [
     "Show total oil production by field for all time",
     "What is total gas production by location type",
@@ -136,7 +158,6 @@ SNOWFLAKE_SUGGESTIONS = [
     "Show total production by month for Krishna Basin",
     "Which wells had highest gas production in 2025",
 ]
-
 
 def get_suggestions() -> list:
     if st.session_state.db_connected:
@@ -168,6 +189,239 @@ def clean_history(msgs):
             if isinstance(c, str) and c.strip():
                 clean.append(m)
     return clean[-4:]
+
+
+# ── NEW FEATURE 1: Chart theme colours ────────────────────
+CHART_THEMES = {
+    "Dark":       {"paper": "rgba(0,0,0,0)",     "plot": "rgba(10,10,30,0.6)",  "font": "white",   "title": "#48cae4", "scale": "Blues"},
+    "Light":      {"paper": "rgba(255,255,255,1)","plot": "rgba(240,245,255,1)", "font": "#1a1a2e", "title": "#0077b6","scale": "Blues"},
+    "Corporate":  {"paper": "rgba(0,20,40,0.95)", "plot": "rgba(0,30,60,0.8)",  "font": "#e0e0e0", "title": "#00b4d8","scale": "Teal"},
+    "Warm":       {"paper": "rgba(30,10,0,0.9)",  "plot": "rgba(50,20,0,0.7)",  "font": "#fff3e0", "title": "#ffa726","scale": "Oranges"},
+}
+
+def apply_theme(fig, theme_name: str):
+    t = CHART_THEMES.get(theme_name, CHART_THEMES["Dark"])
+    fig.update_layout(
+        paper_bgcolor=t["paper"], plot_bgcolor=t["plot"],
+        font_color=t["font"], title_font_color=t["title"],
+        legend=dict(bgcolor="rgba(0,0,0,0)"),
+        margin=dict(l=20,r=20,t=50,b=20))
+    fig.update_xaxes(gridcolor="rgba(128,128,128,0.15)")
+    fig.update_yaxes(gridcolor="rgba(128,128,128,0.15)")
+    return fig
+
+
+# ── NEW FEATURE 2: Anomaly detection ──────────────────────
+def detect_anomalies(df: pd.DataFrame) -> list:
+    """
+    Zero tokens — pure maths.
+    Returns list of anomaly strings to display.
+    """
+    alerts = []
+    num_cols = df.select_dtypes(include="number").columns.tolist()
+    for col in num_cols:
+        series = df[col].dropna()
+        if len(series) < 3:
+            continue
+        mean = series.mean()
+        std  = series.std()
+        if std == 0:
+            continue
+        high = series[series > mean + 2 * std]
+        low  = series[series < mean - 2 * std]
+        for idx in high.index:
+            alerts.append(("high", col, df.iloc[idx, 0] if len(df.columns) > 1 else f"Row {idx}", series[idx]))
+        for idx in low.index:
+            alerts.append(("low",  col, df.iloc[idx, 0] if len(df.columns) > 1 else f"Row {idx}", series[idx]))
+    return alerts[:5]  # max 5 alerts
+
+
+# ── NEW FEATURE 3: Confidence score ───────────────────────
+def calc_confidence(parsed: dict, df) -> int:
+    """
+    Zero tokens — heuristic scoring.
+    Returns 0-100 score based on result quality.
+    """
+    if parsed is None:
+        return 0
+    score = 40
+    if parsed.get("type") == "table":
+        score += 20
+        rows = parsed.get("data", [])
+        if len(rows) > 0:   score += 15
+        if len(rows) > 3:   score += 10
+        if parsed.get("summary"): score += 10
+        if parsed.get("kpis"):    score += 5
+    elif parsed.get("type") == "text":
+        content = parsed.get("content", "")
+        if len(content) > 50:  score += 20
+        if len(content) > 200: score += 15
+    return min(score, 98)
+
+
+# ── NEW FEATURE 4: Query history PDF export ───────────────
+def export_query_history_pdf(query_log: list) -> bytes:
+    """Export full session query history as PDF. Zero tokens."""
+    pdf = FPDF()
+    pdf.set_auto_page_break(True, 20)
+    pdf.add_page()
+    # Header
+    pdf.set_fill_color(0, 77, 128)
+    pdf.rect(0, 0, 210, 18, "F")
+    pdf.set_font("Arial", "B", 13)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_y(4)
+    pdf.cell(0, 10, "Insight Grid AI -- Session Query History", ln=True, align="C")
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(6)
+
+    for i, entry in enumerate(query_log):
+        pdf.set_font("Arial", "B", 10)
+        pdf.set_text_color(0, 77, 128)
+        pdf.cell(0, 7, f"Query {i+1}: {entry.get('q','')[:80]}", ln=True)
+        pdf.set_font("Arial", "", 9)
+        pdf.set_text_color(40, 40, 40)
+        result_text = entry.get("a", "No result")[:300]
+        pdf.multi_cell(0, 6, result_text)
+        pdf.ln(3)
+        pdf.set_draw_color(200, 220, 240)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(4)
+
+    # Return as bytes
+    pdf_str = pdf.output(dest="S")
+    if isinstance(pdf_str, str):
+        return pdf_str.encode("latin-1")
+    return bytes(pdf_str)
+
+
+# ── NEW FEATURE 5: Table relationship map ─────────────────
+def show_relationship_map(db_config: dict):
+    """
+    Zero tokens — draws a visual relationship map
+    based on common key column names across tables.
+    """
+    try:
+        from db.connection import get_db_connection_dynamic
+        conn = get_db_connection_dynamic(db_config)
+        cur  = conn.cursor()
+        db_type = db_config.get("db_type", "postgresql").lower()
+
+        if db_type == "snowflake":
+            db_name = db_config.get("database", "").upper()
+            schema  = db_config.get("schema", "PUBLIC").upper()
+            cur.execute(f"""
+                SELECT TABLE_NAME, COLUMN_NAME
+                FROM {db_name}.INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = '{schema}'
+                ORDER BY TABLE_NAME, ORDINAL_POSITION
+            """)
+        else:
+            cur.execute("""
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                ORDER BY table_name, ordinal_position
+            """)
+
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+
+        # Build table→columns map
+        table_cols: dict = {}
+        for tname, cname in rows:
+            table_cols.setdefault(tname, []).append(cname)
+
+        tables = list(table_cols.keys())
+        if not tables:
+            st.info("No tables found.")
+            return
+
+        # Find relationships — columns ending in _key or _id shared between tables
+        relationships = []
+        for i, t1 in enumerate(tables):
+            for t2 in tables[i+1:]:
+                common = set(table_cols[t1]) & set(table_cols[t2])
+                key_cols = [c for c in common if c.endswith(("_key","_id","key","id"))]
+                if key_cols:
+                    relationships.append((t1, t2, ", ".join(key_cols[:3])))
+
+        # Draw with plotly
+        n = len(tables)
+        import math
+        angle_step = 2 * math.pi / max(n, 1)
+        radius = 2
+        pos = {t: (radius * math.cos(i * angle_step),
+                   radius * math.sin(i * angle_step))
+               for i, t in enumerate(tables)}
+
+        edge_x, edge_y, edge_labels = [], [], []
+        for t1, t2, label in relationships:
+            x0,y0 = pos[t1]; x1,y1 = pos[t2]
+            edge_x += [x0, x1, None]
+            edge_y += [y0, y1, None]
+            edge_labels.append(dict(
+                x=(x0+x1)/2, y=(y0+y1)/2,
+                text=label, showarrow=False,
+                font=dict(size=8, color="#90e0ef"),
+                bgcolor="rgba(0,50,80,0.7)"
+            ))
+
+        node_x = [pos[t][0] for t in tables]
+        node_y = [pos[t][1] for t in tables]
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=edge_x, y=edge_y, mode="lines",
+            line=dict(width=2, color="#0077b6"), hoverinfo="none"
+        ))
+        fig.add_trace(go.Scatter(
+            x=node_x, y=node_y, mode="markers+text",
+            marker=dict(size=28, color="#00b4d8",
+                        line=dict(width=2, color="#48cae4")),
+            text=tables, textposition="top center",
+            textfont=dict(color="white", size=11),
+            hoverinfo="text"
+        ))
+        fig.update_layout(
+            annotations=edge_labels,
+            showlegend=False,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(10,10,30,0.6)",
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            margin=dict(l=20,r=20,t=20,b=20),
+            height=400,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        if relationships:
+            st.caption(f"🔗 Found {len(relationships)} relationships via shared key columns")
+        else:
+            st.caption("ℹ️ No shared key columns detected between tables")
+
+    except Exception as e:
+        st.error(f"Could not load relationship map: {e}")
+
+
+# ── NEW FEATURE 6: Run single query helper ────────────────
+def run_single_query(q: str, db_config: dict, messages: list) -> tuple:
+    """Run one query and return (parsed, df, chart_df)."""
+    app = get_supervisor_app(db_config)
+    result = app.invoke({"messages": messages + [HumanMessage(content=q)], "step": 0})
+    final = ""
+    for msg in reversed(result.get("messages", [])):
+        if getattr(msg, "type", "") == "ai":
+            c = getattr(msg, "content", "")
+            if c and str(c).strip():
+                final = str(c).strip()
+                break
+    parsed = parse_response(final)
+    df = None
+    cdf = None
+    if parsed.get("type") == "table":
+        df  = pd.DataFrame(parsed.get("data",[]), columns=parsed.get("columns",[]))
+        cdf = make_chart_df(df)
+    return parsed, df, cdf
 
 
 # ── Header ─────────────────────────────────────────────────
@@ -267,7 +521,6 @@ with st.sidebar:
     else:
         st.markdown("### 💡 E-Commerce Questions")
     st.caption("Click → edit → Run Analysis")
-
     for i, s in enumerate(get_suggestions()):
         if st.button(s, key=f"sug_{i}", use_container_width=True):
             st.session_state.pending_text = s
@@ -282,6 +535,39 @@ with st.sidebar:
             st.session_state.db_connected=False; st.session_state.db_config={}; st.rerun()
     else:
         st.warning("No database connected")
+
+    # ── NEW: Chart Theme ───────────────────────────────────
+    st.divider()
+    st.markdown("### 🎨 Chart Theme")
+    st.session_state.chart_theme = st.selectbox(
+        "Select Theme", list(CHART_THEMES.keys()),
+        index=list(CHART_THEMES.keys()).index(st.session_state.chart_theme),
+        key="theme_select", label_visibility="collapsed"
+    )
+
+    # ── NEW: Table Relationship Map ────────────────────────
+    if st.session_state.db_connected:
+        st.divider()
+        st.markdown("### 🗺️ Table Relationships")
+        if st.button("Show Relationship Map", use_container_width=True):
+            st.session_state["show_rel_map"] = True
+
+    # ── NEW: Query History Export ──────────────────────────
+    if st.session_state.query_log:
+        st.divider()
+        st.markdown("### 📋 Session History")
+        st.caption(f"{len(st.session_state.query_log)} queries this session")
+        try:
+            hist_pdf = export_query_history_pdf(st.session_state.query_log)
+            st.download_button(
+                "📥 Export History PDF",
+                data=hist_pdf,
+                file_name="query_history.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        except Exception:
+            pass
 
     if st.session_state.memory_on and st.session_state.history_pairs:
         st.divider()
@@ -298,6 +584,75 @@ with st.sidebar:
                     st.session_state.pending_text=pair['q']; st.rerun()
         if st.button("🗑️ Clear History",use_container_width=True):
             st.session_state.history=[]; st.session_state.history_pairs=[]; st.rerun()
+
+
+# ── NEW: Relationship Map Display ─────────────────────────
+if st.session_state.get("show_rel_map") and st.session_state.db_connected:
+    st.subheader("🗺️ Table Relationship Map")
+    show_relationship_map(st.session_state.db_config)
+    if st.button("✖ Close Map"):
+        st.session_state["show_rel_map"] = False
+        st.rerun()
+    st.divider()
+
+
+# ── NEW: Compare Two Queries Mode ─────────────────────────
+st.session_state.compare_mode = st.toggle(
+    "⚖️ Compare Two Queries Mode", value=st.session_state.compare_mode,
+    key="compare_toggle"
+)
+
+if st.session_state.compare_mode:
+    st.info("💡 Enter two different questions to compare results side by side.")
+    cq1, cq2 = st.columns(2)
+    with cq1:
+        q1 = st.text_area("Question 1", height=80, key="cmp_q1",
+                           placeholder="e.g. Show top 5 customers by revenue")
+    with cq2:
+        q2 = st.text_area("Question 2", height=80, key="cmp_q2",
+                           placeholder="e.g. Show top 5 products by revenue")
+
+    if st.button("⚖️ Run Comparison", type="primary", use_container_width=True):
+        if not st.session_state.db_connected:
+            st.error("❌ Connect to a database first.")
+        elif not q1.strip() or not q2.strip():
+            st.warning("⚠️ Please enter both questions.")
+        else:
+            with st.spinner("Running both queries…"):
+                try:
+                    p1, df1, cdf1 = run_single_query(q1.strip(), st.session_state.db_config, [])
+                    p2, df2, cdf2 = run_single_query(q2.strip(), st.session_state.db_config, [])
+                    st.session_state.compare_parsed1 = p1
+                    st.session_state.compare_parsed2 = p2
+                    st.session_state.compare_df1 = df1
+                    st.session_state.compare_df2 = df2
+                except Exception as e:
+                    st.error(f"Comparison error: {e}")
+
+    # Show comparison results
+    if st.session_state.compare_df1 is not None or st.session_state.compare_parsed1:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Result 1:** {st.session_state.get('cmp_q1','')[:50]}")
+            p1 = st.session_state.compare_parsed1
+            df1 = st.session_state.compare_df1
+            if p1 and p1.get("summary"):
+                st.info(f"💡 {p1['summary']}")
+            if df1 is not None:
+                st.dataframe(df1, use_container_width=True)
+            elif p1 and p1.get("type") == "text":
+                st.markdown(p1.get("content",""))
+        with col2:
+            st.markdown(f"**Result 2:** {st.session_state.get('cmp_q2','')[:50]}")
+            p2 = st.session_state.compare_parsed2
+            df2 = st.session_state.compare_df2
+            if p2 and p2.get("summary"):
+                st.info(f"💡 {p2['summary']}")
+            if df2 is not None:
+                st.dataframe(df2, use_container_width=True)
+            elif p2 and p2.get("type") == "text":
+                st.markdown(p2.get("content",""))
+    st.divider()
 
 
 # ── Query box ──────────────────────────────────────────────
@@ -374,7 +729,6 @@ if run_clicked:
         st.session_state.last_df  = None
         st.session_state.chart_df = None
 
-    # ── ONLY CHANGE: pass db_type to followup agent ────────
     try:
         current_db_type = st.session_state.db_config.get("db_type", "postgresql").lower()
         st.session_state.followups = get_followup_questions(active_query, db_type=current_db_type)
@@ -384,27 +738,44 @@ if run_clicked:
             "Compare this year vs last year", "Show bottom 5 performers",
             "Show total count of records",
         ]
-    # ── END OF CHANGE ──────────────────────────────────────
+
+    # Log query for history export
+    a_text = ""
+    if parsed:
+        if parsed.get("type") == "text":
+            a_text = parsed.get("content", final)[:200]
+        else:
+            cols=parsed.get("columns",[]); rows=parsed.get("data",[])
+            a_text=f"Table: {len(rows)} rows — {', '.join(cols[:3])}"
+    st.session_state.query_log.append({"q": active_query, "a": a_text})
+    if len(st.session_state.query_log) > 50:
+        st.session_state.query_log = st.session_state.query_log[-50:]
 
     if st.session_state.memory_on:
         st.session_state.history.append(HumanMessage(content=active_query))
         st.session_state.history.append(AIMessage(content=final))
         if len(st.session_state.history) > 8:
             st.session_state.history = st.session_state.history[-8:]
-        a_text = ""
-        if parsed:
-            if parsed.get("type") == "text":
-                a_text = parsed.get("content", final)[:150]
-            else:
-                cols=parsed.get("columns",[]); rows=parsed.get("data",[])
-                a_text=f"{len(rows)} rows — {', '.join(cols[:3])}"
         st.session_state.history_pairs.append({"q":active_query,"a":a_text})
         if len(st.session_state.history_pairs)>8:
             st.session_state.history_pairs=st.session_state.history_pairs[-8:]
 
 
-# ── KPI Cards ──────────────────────────────────────────────
+# ── NEW: Confidence Score ──────────────────────────────────
 parsed = st.session_state.last_parsed
+if parsed and st.session_state.last_response:
+    score = calc_confidence(parsed, st.session_state.last_df)
+    color = "#48cae4" if score >= 80 else "#ffd93d" if score >= 60 else "#ff6b6b"
+    st.markdown(
+        f'<div class="confidence-bar">🎯 <b>AI Confidence:</b> '
+        f'<span style="color:{color};font-weight:700">{score}%</span> — '
+        f'{"High confidence result" if score>=80 else "Moderate confidence" if score>=60 else "Low confidence — verify result"}'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+
+# ── KPI Cards ──────────────────────────────────────────────
 if parsed and isinstance(parsed, dict):
     kpis = parsed.get("kpis", [])
     if kpis:
@@ -427,6 +798,21 @@ if parsed and isinstance(parsed, dict) and parsed.get("summary"):
 if st.session_state.last_df is not None:
     st.subheader("📊 Structured Result")
     st.dataframe(st.session_state.last_df, use_container_width=True)
+
+    # ── NEW: Anomaly Detection ─────────────────────────────
+    anomalies = detect_anomalies(st.session_state.last_df)
+    if anomalies:
+        st.subheader("⚠️ Data Anomalies Detected")
+        for atype, col, label, val in anomalies:
+            css = "anomaly-high" if atype == "high" else "anomaly-low"
+            icon = "🔺" if atype == "high" else "🔻"
+            st.markdown(
+                f'<span class="{css}">{icon} Unusual {atype} value in <b>{col}</b>: '
+                f'<b>{label}</b> = {val:,.0f}</span>',
+                unsafe_allow_html=True
+            )
+        st.markdown("")
+
     if st.session_state.get("permissions",{}).get("can_download",True):
         csv = st.session_state.last_df.to_csv(index=False).encode("utf-8")
         st.download_button("📥 Download CSV (Power BI)", data=csv,
@@ -460,11 +846,14 @@ if st.session_state.chart_df is not None:
             lbl_options=[c for c in all_cols if c!=val_col] or all_cols
             lbl_col=st.selectbox("Label/Group",lbl_options,key="viz_label_col")
 
+        theme = st.session_state.chart_theme
+        scale = CHART_THEMES[theme]["scale"]
         title=f"{val_col} by {lbl_col}"; fig=None
+
         if   chart_type=="Bar":
-            fig=px.bar(cdf,x=lbl_col,y=val_col,color=val_col,color_continuous_scale="Blues",title=title,text_auto=True)
+            fig=px.bar(cdf,x=lbl_col,y=val_col,color=val_col,color_continuous_scale=scale,title=title,text_auto=True)
         elif chart_type=="Horizontal Bar":
-            fig=px.bar(cdf,x=val_col,y=lbl_col,orientation="h",color=val_col,color_continuous_scale="Teal",title=title,text_auto=True)
+            fig=px.bar(cdf,x=val_col,y=lbl_col,orientation="h",color=val_col,color_continuous_scale=scale,title=title,text_auto=True)
         elif chart_type=="Line":
             fig=px.line(cdf,x=lbl_col,y=val_col,markers=True,title=title)
         elif chart_type=="Area":
@@ -476,16 +865,10 @@ if st.session_state.chart_df is not None:
         elif chart_type=="Treemap":
             fig=px.treemap(cdf,path=[lbl_col],values=val_col,title=title)
         elif chart_type=="Scatter":
-            fig=px.scatter(cdf,x=lbl_col,y=val_col,color=val_col,color_continuous_scale="Blues",title=title)
+            fig=px.scatter(cdf,x=lbl_col,y=val_col,color=val_col,color_continuous_scale=scale,title=title)
 
         if fig:
-            fig.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(10,10,30,0.6)",
-                font_color="white", title_font_color="#48cae4",
-                legend=dict(bgcolor="rgba(0,0,0,0)"),
-                margin=dict(l=20,r=20,t=50,b=20))
-            fig.update_xaxes(gridcolor="rgba(255,255,255,0.08)")
-            fig.update_yaxes(gridcolor="rgba(255,255,255,0.08)")
+            fig = apply_theme(fig, theme)
             st.plotly_chart(fig,use_container_width=True)
             try:
                 fig.write_image("chart_export.png",width=900,height=500,scale=2)
