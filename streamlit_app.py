@@ -92,7 +92,7 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
 .meta-bar {{
     background:rgba(0,50,80,0.4); border-radius:8px;
     padding:6px 14px; margin-bottom:6px; font-size:0.82rem;
-    color:#90e0ef; display:flex; gap:18px; flex-wrap:wrap;
+    color:#90e0ef;
 }}
 .tag-badge {{
     display:inline-block; padding:2px 10px; border-radius:12px;
@@ -132,11 +132,10 @@ _defaults = {
     "query_log":       [],
     "chart_theme":     "Dark",
     "pinned_result":   None,
-    # NEW
-    "query_count":     0,       # feature 4
-    "last_resp_time":  None,    # feature 5
-    "last_fetch_time": None,    # feature 6
-    "last_query_tag":  None,    # feature 9
+    "query_count":     0,
+    "last_resp_time":  None,
+    "last_fetch_time": None,
+    "last_query_tag":  None,
 }
 for k, v in _defaults.items():
     if k not in st.session_state:
@@ -314,7 +313,7 @@ def show_relationship_map(db_config):
         fig.add_trace(go.Scatter(x=[pos[t][0] for t in tables],y=[pos[t][1] for t in tables],mode="markers+text",marker=dict(size=28,color="#00b4d8",line=dict(width=2,color="#48cae4")),text=tables,textposition="top center",textfont=dict(color="white",size=11),hoverinfo="text"))
         fig.update_layout(annotations=annots,showlegend=False,paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(10,10,30,0.6)",xaxis=dict(showgrid=False,zeroline=False,showticklabels=False),yaxis=dict(showgrid=False,zeroline=False,showticklabels=False),margin=dict(l=20,r=20,t=20,b=20),height=400)
         st.plotly_chart(fig,use_container_width=True)
-        st.caption(f"🔗 {len(relationships)} relationships found via shared key columns")
+        st.caption(f"🔗 {len(relationships)} relationships found")
     except Exception as e:
         st.error(f"Could not load map: {e}")
 
@@ -349,28 +348,25 @@ def show_stats_panel(df):
                     st.markdown(f'<div class="stat-card"><div class="stat-val">{val}</div><div class="stat-lbl">{lbl}</div></div>',unsafe_allow_html=True)
             st.markdown("")
 
-# ── FEATURE 1: Copy to clipboard ──────────────────────────
+# ── FEATURE 1 FIX: Copy as download (no JS needed) ────────
 def show_copy_button(df):
-    """Renders a copy-to-clipboard button — zero tokens."""
-    csv_str = df.to_csv(index=False)
-    st.markdown(
-        f"""
-        <button onclick="navigator.clipboard.writeText({json.dumps(csv_str)}).then(()=>{{
-            this.textContent='✅ Copied!';
-            setTimeout(()=>{{this.textContent='📋 Copy Table'}},2000);
-        }})"
-        style="background:rgba(0,119,182,0.3);border:1px solid rgba(0,180,216,0.5);
-               color:#90e0ef;border-radius:8px;padding:5px 14px;cursor:pointer;
-               font-size:0.85rem;margin-bottom:6px;">
-        📋 Copy Table
-        </button>
-        """,
-        unsafe_allow_html=True,
+    """
+    FIX: Replaced JS clipboard (broken in Streamlit) with
+    a proper download_button for plain text copy.
+    User clicks → file opens → Ctrl+A, Ctrl+C to copy.
+    Zero tokens. Works in all browsers.
+    """
+    txt = df.to_csv(index=False, sep="\t")   # tab-separated for easy paste into Excel
+    st.download_button(
+        label="📋 Copy / Download as Text",
+        data=txt.encode("utf-8"),
+        file_name="table_data.txt",
+        mime="text/plain",
+        key="copy_btn",
     )
 
-# ── FEATURE 3: Searchable + sortable table ─────────────────
+# ── FEATURE 3: Searchable table ───────────────────────────
 def show_searchable_table(df, row_limit=None):
-    """Search, filter, column sort — zero tokens."""
     search = st.text_input("🔍 Search / filter rows",
         placeholder="Type to filter any column…", key="table_search")
     display_df = df.copy()
@@ -395,7 +391,6 @@ _TAG_RULES = [
 ]
 
 def auto_tag(query: str) -> str:
-    """Zero tokens — pure keyword matching."""
     q = query.lower()
     for tag, keywords in _TAG_RULES:
         if any(kw in q for kw in keywords):
@@ -505,11 +500,10 @@ with st.sidebar:
         index=list(CHART_THEMES.keys()).index(st.session_state.chart_theme),
         key="theme_select",label_visibility="collapsed")
 
-    # FEATURE 4: Query counter
     if st.session_state.query_count > 0:
         st.divider()
-        st.markdown(f"### 🎯 Session Stats")
-        st.info(f"**{st.session_state.query_count}** queries asked this session")
+        st.markdown("### 🎯 Session Stats")
+        st.info(f"**{st.session_state.query_count}** queries this session")
 
     if st.session_state.db_connected:
         st.divider()
@@ -618,11 +612,10 @@ if run_clicked:
     app=get_supervisor_app(st.session_state.db_config)
     try:
         with st.spinner("🤖 Running Agents… (Analyst → Expert → Reviewer)"):
-            _t_start=time.time()                          # FEATURE 5 start
+            _t_start=time.time()
             result=app.invoke({"messages":messages,"step":0})
-            _t_end=time.time()                            # FEATURE 5 end
-            st.session_state.last_resp_time=round(_t_end-_t_start,1)
-            st.session_state.last_fetch_time=datetime.now().strftime("%H:%M:%S")  # FEATURE 6
+            st.session_state.last_resp_time=round(time.time()-_t_start,1)
+            st.session_state.last_fetch_time=datetime.now().strftime("%H:%M:%S")
 
         final=""
         for msg in reversed(result.get("messages",[])):
@@ -644,8 +637,8 @@ if run_clicked:
     st.session_state.last_run_query=active_query
     st.session_state.chart_path=None
     st.session_state.pending_text=active_query
-    st.session_state.query_count+=1                       # FEATURE 4
-    st.session_state.last_query_tag=auto_tag(active_query)# FEATURE 9
+    st.session_state.query_count+=1
+    st.session_state.last_query_tag=auto_tag(active_query)
 
     parsed=parse_response(final)
     st.session_state.last_parsed=parsed
@@ -680,21 +673,19 @@ if run_clicked:
         st.session_state.history_pairs.append({"q":active_query,"a":a_text})
         if len(st.session_state.history_pairs)>8: st.session_state.history_pairs=st.session_state.history_pairs[-8:]
 
-# ── FEATURES 5,6,9: Meta bar ──────────────────────────────
+# ── Meta bar: tag + response time + freshness ─────────────
 parsed=st.session_state.last_parsed
 if st.session_state.last_response:
-    meta_parts=[]
+    parts=[]
     if st.session_state.last_query_tag:
         tag=st.session_state.last_query_tag
-        meta_parts.append(f'<span class="tag-badge tag-{tag}">🏷️ {tag}</span>')
+        parts.append(f'<span class="tag-badge tag-{tag}">🏷️ {tag}</span>')
     if st.session_state.last_resp_time is not None:
-        meta_parts.append(f"⏱️ Response: <b>{st.session_state.last_resp_time}s</b>")
+        parts.append(f"⏱️ Response: <b>{st.session_state.last_resp_time}s</b>")
     if st.session_state.last_fetch_time:
-        meta_parts.append(f"🌡️ Fetched at: <b>{st.session_state.last_fetch_time}</b>")
-    if meta_parts:
-        st.markdown(
-            f'<div class="meta-bar">{"&nbsp;&nbsp;|&nbsp;&nbsp;".join(meta_parts)}</div>',
-            unsafe_allow_html=True)
+        parts.append(f"🌡️ Fetched at: <b>{st.session_state.last_fetch_time}</b>")
+    if parts:
+        st.markdown(f'<div class="meta-bar">{" &nbsp;|&nbsp; ".join(parts)}</div>',unsafe_allow_html=True)
 
 # ── Confidence score ───────────────────────────────────────
 if parsed and st.session_state.last_response:
@@ -720,21 +711,22 @@ if parsed and isinstance(parsed,dict):
 if parsed and isinstance(parsed,dict) and parsed.get("summary"):
     st.info(f"💡 {parsed['summary']}")
 
-# ── Data table ─────────────────────────────────────────────
+# ── Data table + all features ──────────────────────────────
 if st.session_state.last_df is not None:
     df=st.session_state.last_df
     st.subheader("📊 Structured Result")
 
-    # FEATURE 7: Row limiter slider
+    # FEATURE 7: Row limiter
     total_rows=len(df)
+    row_limit=total_rows
     if total_rows > 10:
         row_limit=st.slider("📏 Show rows",min_value=5,max_value=total_rows,
             value=min(25,total_rows),step=5,key="row_limit_slider")
-    else:
-        row_limit=total_rows
 
-    # FEATURE 1 + 3: Copy button + searchable table
+    # FEATURE 1: Copy/download as text
     show_copy_button(df)
+
+    # FEATURE 3: Search + filtered table
     show_searchable_table(df, row_limit=row_limit)
 
     # Stats panel
