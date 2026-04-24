@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import json
-import io
+import json, time, io
 from fpdf import FPDF
+from datetime import datetime
 from langchain_core.messages import AIMessage, HumanMessage
 
 from auth.login_ui import show_login_popup, check_auth, logout
@@ -89,6 +89,22 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
     background:rgba(0,100,60,0.4); border:1px solid rgba(0,200,120,0.5);
     border-radius:10px; padding:12px 16px; margin-bottom:12px;
 }}
+.meta-bar {{
+    background:rgba(0,50,80,0.4); border-radius:8px;
+    padding:6px 14px; margin-bottom:6px; font-size:0.82rem;
+    color:#90e0ef; display:flex; gap:18px; flex-wrap:wrap;
+}}
+.tag-badge {{
+    display:inline-block; padding:2px 10px; border-radius:12px;
+    font-size:0.75rem; font-weight:700; margin-right:4px;
+}}
+.tag-Revenue    {{ background:#0077b6; color:white; }}
+.tag-Trend      {{ background:#00b4d8; color:white; }}
+.tag-Metadata   {{ background:#7b2d8b; color:white; }}
+.tag-Count      {{ background:#2d8b5a; color:white; }}
+.tag-Comparison {{ background:#8b5a2d; color:white; }}
+.tag-Top        {{ background:#1a6b3a; color:white; }}
+.tag-Other      {{ background:#555;    color:white; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -115,8 +131,12 @@ _defaults = {
     "compare_parsed2": None,
     "query_log":       [],
     "chart_theme":     "Dark",
+    "pinned_result":   None,
     # NEW
-    "pinned_result":   None,   # {query, parsed, df}
+    "query_count":     0,       # feature 4
+    "last_resp_time":  None,    # feature 5
+    "last_fetch_time": None,    # feature 6
+    "last_query_tag":  None,    # feature 9
 }
 for k, v in _defaults.items():
     if k not in st.session_state:
@@ -158,14 +178,14 @@ SNOWFLAKE_SUGGESTIONS = [
     "Which wells had highest gas production in 2025",
 ]
 
-def get_suggestions() -> list:
+def get_suggestions():
     if st.session_state.db_connected:
-        if st.session_state.db_config.get("db_type","postgresql").lower() == "snowflake":
+        if st.session_state.db_config.get("db_type","postgresql").lower()=="snowflake":
             return SNOWFLAKE_SUGGESTIONS
     return POSTGRESQL_SUGGESTIONS
 
 # ── Helpers ────────────────────────────────────────────────
-def make_chart_df(raw_df: pd.DataFrame) -> pd.DataFrame:
+def make_chart_df(raw_df):
     df = raw_df.copy()
     for col in df.columns:
         cleaned = (df[col].astype(str)
@@ -181,9 +201,9 @@ def make_chart_df(raw_df: pd.DataFrame) -> pd.DataFrame:
 def clean_history(msgs):
     clean = []
     for m in msgs:
-        if isinstance(m, (HumanMessage, AIMessage)):
-            c = getattr(m, "content", "")
-            if isinstance(c, str) and c.strip():
+        if isinstance(m,(HumanMessage,AIMessage)):
+            c = getattr(m,"content","")
+            if isinstance(c,str) and c.strip():
                 clean.append(m)
     return clean[-4:]
 
@@ -214,10 +234,10 @@ def detect_anomalies(df):
         if len(s) < 3: continue
         mean, std = s.mean(), s.std()
         if std == 0: continue
-        for idx in s[s > mean + 2*std].index:
-            alerts.append(("high", col, str(df.iloc[idx,0])[:20], s[idx]))
-        for idx in s[s < mean - 2*std].index:
-            alerts.append(("low",  col, str(df.iloc[idx,0])[:20], s[idx]))
+        for idx in s[s > mean+2*std].index:
+            alerts.append(("high",col,str(df.iloc[idx,0])[:20],s[idx]))
+        for idx in s[s < mean-2*std].index:
+            alerts.append(("low", col,str(df.iloc[idx,0])[:20],s[idx]))
     return alerts[:5]
 
 # ── Confidence score ───────────────────────────────────────
@@ -240,21 +260,20 @@ def calc_confidence(parsed, df) -> int:
 # ── Query history PDF ──────────────────────────────────────
 def export_query_history_pdf(query_log):
     pdf = FPDF()
-    pdf.set_auto_page_break(True, 20)
-    pdf.add_page()
+    pdf.set_auto_page_break(True,20); pdf.add_page()
     pdf.set_fill_color(0,77,128); pdf.rect(0,0,210,18,"F")
     pdf.set_font("Arial","B",13); pdf.set_text_color(255,255,255)
     pdf.set_y(4); pdf.cell(0,10,"Insight Grid AI -- Session Query History",ln=True,align="C")
     pdf.set_text_color(0,0,0); pdf.ln(6)
-    for i, entry in enumerate(query_log):
+    for i,entry in enumerate(query_log):
         pdf.set_font("Arial","B",10); pdf.set_text_color(0,77,128)
         pdf.cell(0,7,f"Query {i+1}: {entry.get('q','')[:80]}",ln=True)
         pdf.set_font("Arial","",9); pdf.set_text_color(40,40,40)
         pdf.multi_cell(0,6,str(entry.get("a","No result"))[:300])
-        pdf.ln(3)
-        pdf.set_draw_color(200,220,240); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(4)
+        pdf.ln(3); pdf.set_draw_color(200,220,240)
+        pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(4)
     out = pdf.output(dest="S")
-    return out.encode("latin-1") if isinstance(out, str) else bytes(out)
+    return out.encode("latin-1") if isinstance(out,str) else bytes(out)
 
 # ── Relationship map ───────────────────────────────────────
 def show_relationship_map(db_config):
@@ -284,8 +303,8 @@ def show_relationship_map(db_config):
                 if keys: relationships.append((t1,t2,", ".join(keys[:3])))
         n = len(tables)
         angle_step = 2*math.pi/max(n,1); radius=2
-        pos = {t:(radius*math.cos(i*angle_step), radius*math.sin(i*angle_step)) for i,t in enumerate(tables)}
-        edge_x,edge_y,annots = [],[],[]
+        pos = {t:(radius*math.cos(i*angle_step),radius*math.sin(i*angle_step)) for i,t in enumerate(tables)}
+        edge_x,edge_y,annots=[],[],[]
         for t1,t2,label in relationships:
             x0,y0=pos[t1]; x1,y1=pos[t2]
             edge_x+=[x0,x1,None]; edge_y+=[y0,y1,None]
@@ -299,10 +318,10 @@ def show_relationship_map(db_config):
     except Exception as e:
         st.error(f"Could not load map: {e}")
 
-# ── Compare mode helper ────────────────────────────────────
+# ── Compare helper ─────────────────────────────────────────
 def run_single_query(q, db_config, messages):
     app = get_supervisor_app(db_config)
-    result = app.invoke({"messages": messages+[HumanMessage(content=q)],"step":0})
+    result = app.invoke({"messages":messages+[HumanMessage(content=q)],"step":0})
     final = ""
     for msg in reversed(result.get("messages",[])):
         if getattr(msg,"type","")=="ai":
@@ -315,51 +334,73 @@ def run_single_query(q, db_config, messages):
         cdf=make_chart_df(df)
     return parsed,df,cdf
 
-# ── NEW FEATURE 2: Statistics panel ───────────────────────
-def show_stats_panel(df: pd.DataFrame):
-    """Zero tokens — pure pandas describe()."""
+# ── Stats panel ────────────────────────────────────────────
+def show_stats_panel(df):
     num_cols = df.select_dtypes(include="number").columns.tolist()
-    if not num_cols:
-        return
-    with st.expander("📊 Column Statistics", expanded=False):
+    if not num_cols: return
+    with st.expander("📊 Column Statistics",expanded=False):
         for col in num_cols:
             s = df[col].dropna()
-            if len(s) == 0: continue
+            if len(s)==0: continue
             st.markdown(f"**{col}**")
-            sc = st.columns(5)
-            stats = [
-                ("Mean",   f"{s.mean():,.1f}"),
-                ("Median", f"{s.median():,.1f}"),
-                ("Min",    f"{s.min():,.1f}"),
-                ("Max",    f"{s.max():,.1f}"),
-                ("Std",    f"{s.std():,.1f}"),
-            ]
-            for i,(lbl,val) in enumerate(stats):
+            sc=st.columns(5)
+            for i,(lbl,val) in enumerate([("Mean",f"{s.mean():,.1f}"),("Median",f"{s.median():,.1f}"),("Min",f"{s.min():,.1f}"),("Max",f"{s.max():,.1f}"),("Std",f"{s.std():,.1f}")]):
                 with sc[i]:
-                    st.markdown(
-                        f'<div class="stat-card">'
-                        f'<div class="stat-val">{val}</div>'
-                        f'<div class="stat-lbl">{lbl}</div>'
-                        f'</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-card"><div class="stat-val">{val}</div><div class="stat-lbl">{lbl}</div></div>',unsafe_allow_html=True)
             st.markdown("")
 
-# ── NEW FEATURE 3: Search/filter ──────────────────────────
-def show_searchable_table(df: pd.DataFrame):
-    """Zero tokens — pure pandas filtering."""
-    search = st.text_input(
-        "🔍 Search / filter rows",
-        placeholder="Type to filter any column…",
-        key="table_search"
+# ── FEATURE 1: Copy to clipboard ──────────────────────────
+def show_copy_button(df):
+    """Renders a copy-to-clipboard button — zero tokens."""
+    csv_str = df.to_csv(index=False)
+    st.markdown(
+        f"""
+        <button onclick="navigator.clipboard.writeText({json.dumps(csv_str)}).then(()=>{{
+            this.textContent='✅ Copied!';
+            setTimeout(()=>{{this.textContent='📋 Copy Table'}},2000);
+        }})"
+        style="background:rgba(0,119,182,0.3);border:1px solid rgba(0,180,216,0.5);
+               color:#90e0ef;border-radius:8px;padding:5px 14px;cursor:pointer;
+               font-size:0.85rem;margin-bottom:6px;">
+        📋 Copy Table
+        </button>
+        """,
+        unsafe_allow_html=True,
     )
+
+# ── FEATURE 3: Searchable + sortable table ─────────────────
+def show_searchable_table(df, row_limit=None):
+    """Search, filter, column sort — zero tokens."""
+    search = st.text_input("🔍 Search / filter rows",
+        placeholder="Type to filter any column…", key="table_search")
+    display_df = df.copy()
     if search.strip():
-        mask = df.astype(str).apply(
-            lambda col: col.str.contains(search.strip(), case=False, na=False)
+        mask = display_df.astype(str).apply(
+            lambda col: col.str.contains(search.strip(),case=False,na=False)
         ).any(axis=1)
-        filtered = df[mask]
-        st.caption(f"Showing {len(filtered)} of {len(df)} rows matching '{search}'")
-        st.dataframe(filtered, use_container_width=True)
-    else:
-        st.dataframe(df, use_container_width=True)
+        display_df = display_df[mask]
+        st.caption(f"Showing {len(display_df)} of {len(df)} rows matching '{search}'")
+    if row_limit and row_limit < len(display_df):
+        display_df = display_df.head(row_limit)
+    st.dataframe(display_df, use_container_width=True)
+
+# ── FEATURE 9: Auto query tagger ──────────────────────────
+_TAG_RULES = [
+    ("Revenue",    ["revenue","sales","income","profit","earning","total"]),
+    ("Trend",      ["trend","monthly","daily","weekly","over time","by month","by year"]),
+    ("Metadata",   ["metadata","schema","column","structure","data type","relationship","compare table","similarity"]),
+    ("Count",      ["count","how many","number of","total records"]),
+    ("Comparison", ["compare","vs","versus","difference","between"]),
+    ("Top",        ["top","best","highest","leading","most"]),
+]
+
+def auto_tag(query: str) -> str:
+    """Zero tokens — pure keyword matching."""
+    q = query.lower()
+    for tag, keywords in _TAG_RULES:
+        if any(kw in q for kw in keywords):
+            return tag
+    return "Other"
 
 # ── Header ─────────────────────────────────────────────────
 st.title("🤖 Insight Grid AI")
@@ -464,6 +505,12 @@ with st.sidebar:
         index=list(CHART_THEMES.keys()).index(st.session_state.chart_theme),
         key="theme_select",label_visibility="collapsed")
 
+    # FEATURE 4: Query counter
+    if st.session_state.query_count > 0:
+        st.divider()
+        st.markdown(f"### 🎯 Session Stats")
+        st.info(f"**{st.session_state.query_count}** queries asked this session")
+
     if st.session_state.db_connected:
         st.divider()
         st.markdown("### 🗺️ Table Relationships")
@@ -504,17 +551,16 @@ if st.session_state.get("show_rel_map") and st.session_state.db_connected:
         st.session_state["show_rel_map"]=False; st.rerun()
     st.divider()
 
-# ── NEW FEATURE 4: Pinned result banner ───────────────────
+# ── Pinned result ──────────────────────────────────────────
 if st.session_state.pinned_result:
     pin=st.session_state.pinned_result
-    with st.container():
-        st.markdown(f'<div class="pinned-banner">📌 <b>Pinned:</b> {pin["query"]}</div>',unsafe_allow_html=True)
-        p=pin["parsed"]; df=pin["df"]
-        if p and p.get("summary"): st.info(f"💡 {p['summary']}")
-        if df is not None: st.dataframe(df,use_container_width=True)
-        elif p and p.get("type")=="text": st.markdown(p.get("content",""))
-        if st.button("📌 Unpin Result"):
-            st.session_state.pinned_result=None; st.rerun()
+    st.markdown(f'<div class="pinned-banner">📌 <b>Pinned:</b> {pin["query"]}</div>',unsafe_allow_html=True)
+    p=pin["parsed"]; df=pin["df"]
+    if p and p.get("summary"): st.info(f"💡 {p['summary']}")
+    if df is not None: st.dataframe(df,use_container_width=True)
+    elif p and p.get("type")=="text": st.markdown(p.get("content",""))
+    if st.button("📌 Unpin Result"):
+        st.session_state.pinned_result=None; st.rerun()
     st.divider()
 
 # ── Compare mode ───────────────────────────────────────────
@@ -572,7 +618,12 @@ if run_clicked:
     app=get_supervisor_app(st.session_state.db_config)
     try:
         with st.spinner("🤖 Running Agents… (Analyst → Expert → Reviewer)"):
+            _t_start=time.time()                          # FEATURE 5 start
             result=app.invoke({"messages":messages,"step":0})
+            _t_end=time.time()                            # FEATURE 5 end
+            st.session_state.last_resp_time=round(_t_end-_t_start,1)
+            st.session_state.last_fetch_time=datetime.now().strftime("%H:%M:%S")  # FEATURE 6
+
         final=""
         for msg in reversed(result.get("messages",[])):
             if getattr(msg,"type","")=="ai":
@@ -593,6 +644,8 @@ if run_clicked:
     st.session_state.last_run_query=active_query
     st.session_state.chart_path=None
     st.session_state.pending_text=active_query
+    st.session_state.query_count+=1                       # FEATURE 4
+    st.session_state.last_query_tag=auto_tag(active_query)# FEATURE 9
 
     parsed=parse_response(final)
     st.session_state.last_parsed=parsed
@@ -627,8 +680,23 @@ if run_clicked:
         st.session_state.history_pairs.append({"q":active_query,"a":a_text})
         if len(st.session_state.history_pairs)>8: st.session_state.history_pairs=st.session_state.history_pairs[-8:]
 
-# ── Confidence score ───────────────────────────────────────
+# ── FEATURES 5,6,9: Meta bar ──────────────────────────────
 parsed=st.session_state.last_parsed
+if st.session_state.last_response:
+    meta_parts=[]
+    if st.session_state.last_query_tag:
+        tag=st.session_state.last_query_tag
+        meta_parts.append(f'<span class="tag-badge tag-{tag}">🏷️ {tag}</span>')
+    if st.session_state.last_resp_time is not None:
+        meta_parts.append(f"⏱️ Response: <b>{st.session_state.last_resp_time}s</b>")
+    if st.session_state.last_fetch_time:
+        meta_parts.append(f"🌡️ Fetched at: <b>{st.session_state.last_fetch_time}</b>")
+    if meta_parts:
+        st.markdown(
+            f'<div class="meta-bar">{"&nbsp;&nbsp;|&nbsp;&nbsp;".join(meta_parts)}</div>',
+            unsafe_allow_html=True)
+
+# ── Confidence score ───────────────────────────────────────
 if parsed and st.session_state.last_response:
     score=calc_confidence(parsed,st.session_state.last_df)
     color="#48cae4" if score>=80 else "#ffd93d" if score>=60 else "#ff6b6b"
@@ -652,15 +720,24 @@ if parsed and isinstance(parsed,dict):
 if parsed and isinstance(parsed,dict) and parsed.get("summary"):
     st.info(f"💡 {parsed['summary']}")
 
-# ── Data table + NEW features 2,3,4 ───────────────────────
+# ── Data table ─────────────────────────────────────────────
 if st.session_state.last_df is not None:
     df=st.session_state.last_df
     st.subheader("📊 Structured Result")
 
-    # FEATURE 3: Searchable table
-    show_searchable_table(df)
+    # FEATURE 7: Row limiter slider
+    total_rows=len(df)
+    if total_rows > 10:
+        row_limit=st.slider("📏 Show rows",min_value=5,max_value=total_rows,
+            value=min(25,total_rows),step=5,key="row_limit_slider")
+    else:
+        row_limit=total_rows
 
-    # FEATURE 2: Stats panel
+    # FEATURE 1 + 3: Copy button + searchable table
+    show_copy_button(df)
+    show_searchable_table(df, row_limit=row_limit)
+
+    # Stats panel
     show_stats_panel(df)
 
     # Anomaly detection
@@ -673,15 +750,11 @@ if st.session_state.last_df is not None:
             st.markdown(f'<span class="{css}">{icon} Unusual {atype} in <b>{col}</b>: <b>{label}</b> = {val:,.0f}</span>',unsafe_allow_html=True)
         st.markdown("")
 
-    # FEATURE 4: Pin result button
+    # Pin button
     pc1,pc2=st.columns([3,1])
     with pc2:
         if st.button("📌 Pin This Result",use_container_width=True):
-            st.session_state.pinned_result={
-                "query": st.session_state.last_run_query,
-                "parsed": st.session_state.last_parsed,
-                "df": df.copy()
-            }
+            st.session_state.pinned_result={"query":st.session_state.last_run_query,"parsed":st.session_state.last_parsed,"df":df.copy()}
             st.success("Pinned!")
 
     if st.session_state.get("permissions",{}).get("can_download",True):
