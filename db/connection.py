@@ -57,7 +57,7 @@ def get_db_connection_dynamic(cfg: dict):
             "user":      cfg["user"],
             "password":  cfg["password"],
             "warehouse": cfg.get("warehouse", "COMPUTE_WH"),
-            "database":  cfg.get("database", ""),
+            "database":  cfg.get("database", "ENERGY"),
             "schema":    cfg.get("schema", "PUBLIC"),
         }
 
