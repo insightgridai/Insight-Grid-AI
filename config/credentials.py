@@ -57,7 +57,7 @@ PRESET_CONNECTIONS = [
         "user":      "INSIGHT",
         "password":  "insightgrid@2026",
         "warehouse": "COMPUTE_WH",
-        "database":  "",          # fill in your Snowflake DB name
+        "database":  "ENERGY",          # fill in your Snowflake DB name
         "schema":    "PUBLIC",
         "role":      "",
         "host":      "",
